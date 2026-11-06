@@ -1,6 +1,10 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Sago Loco POS</title>
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#6B3FA0">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="SL POS">
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -44,6 +48,8 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--ube);outline-of
 .chip{display:inline-flex;align-items:center;gap:6px;padding:6px 10px;border-radius:999px;background:var(--surface-2);font-size:13px;font-weight:600;white-space:nowrap}
 .dot{width:8px;height:8px;border-radius:50%;background:var(--good)}
 .dot.off{background:var(--accent)}
+.dot.bad{background:var(--bad)}
+.eyebrow{margin:0 0 6px;color:var(--muted);font-size:12px;letter-spacing:.08em;text-transform:uppercase}
 .top .spacer{flex:1}
 .btn{padding:10px 14px;border-radius:10px;font-weight:700;background:var(--surface);border:1px solid var(--line)}
 .btn:hover{border-color:var(--muted)}
@@ -200,10 +206,10 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--ube);outline-of
 
 <div id="app">
   <header class="top">
-    <div class="brand">Sago Loco POS<small>Karuhatan</small></div>
+    <div class="brand">Sago Loco POS<small id="storeName">Karuhatan</small></div>
     <span class="chip" id="shiftChip"></span>
     <span class="chip ups num" id="upsChip"></span>
-    <span class="chip hide-sm" id="syncChip"><i class="dot"></i>Saved on this tablet</span>
+    <span class="chip" id="syncChip"><i class="dot"></i>Starting…</span>
     <span class="chip demo" id="demoChip" hidden>Demo data</span>
     <span class="spacer"></span>
     <button class="btn cog" data-act="menu" aria-label="Settings and shift tools"><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path fill="currentColor" d="M19.4 13a7.6 7.6 0 0 0 0-2l2.1-1.6-2-3.5-2.5 1a7.4 7.4 0 0 0-1.7-1L15 3h-4l-.3 2.9a7.4 7.4 0 0 0-1.7 1l-2.5-1-2 3.5L6.6 11a7.6 7.6 0 0 0 0 2l-2.1 1.6 2 3.5 2.5-1c.5.4 1.1.7 1.7 1L11 21h4l.3-2.9c.6-.3 1.2-.6 1.7-1l2.5 1 2-3.5L19.4 13ZM13 15.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7Z" transform="translate(-1 0)"/></svg></button>
@@ -223,9 +229,16 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--ube);outline-of
 <div class="screen" id="screen" hidden></div>
 <div id="toast" hidden></div>
 
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 <script>
-// ---- menu, rebuilt from the UTAK export (127 items -> 20 drinks x sizes) ----
-const SERIES = [
+// ---- connection: public values only; the database's access rules decide what each login can do ----
+const SB_URL = 'https://fsdaiiazdnkmsqwyxrcj.supabase.co';
+const SB_KEY = 'sb_publishable_qv46qcVUERE-2ivDDbKKAA_eU7QZcS6';
+let sb = null;
+try{ if(window.supabase) sb = window.supabase.createClient(SB_URL, SB_KEY, {auth:{persistSession:true, autoRefreshToken:true}}) }catch(_){ sb = null }
+
+// ---- demo menu, rebuilt from the UTAK export (127 items -> 20 drinks x sizes); live mode loads HQ's menu ----
+const SERIES_BASE = [
   {id:'mango',  name:'Golden Mango',    c:'--s-mango'},
   {id:'ube',    name:'Purple Magic Ube',c:'--s-ube'},
   {id:'classic',name:'Classic Shakes',  c:'--s-classic'},
@@ -234,7 +247,7 @@ const SERIES = [
   {id:'cafe',   name:'Café Blends',     c:'--s-cafe'}
 ];
 // sizes = walk-in price, del = Grab / Foodpanda price (same on both apps in UTAK)
-const MENU = [
+const DEMO_MENU = [
   {id:'gm-classic', s:'mango', n:'Golden Mango Classic',  sizes:{R:60,T:65,G:80},  del:{T:105,G:125}},
   {id:'gm-overload',s:'mango', n:'Golden Mango Overload', sizes:{R:80,T:85,G:100}, del:null},
   {id:'gm-regal',   s:'mango', n:'Golden Regal Mango',    sizes:{R:80,T:95,G:110}, del:{T:200,G:220}},
@@ -256,32 +269,52 @@ const MENU = [
   {id:'kk-oreo',    s:'kitkat',n:'KitKat Oreo Overload',  sizes:{T:125,G:115},     del:null},
   {id:'mocha',      s:'cafe',  n:'Café Mocha Smoothie',   sizes:{R:90,T:95,G:115}, del:{T:150,G:170}}
 ];
-const SIZE_NAME = {R:'Regular',T:'Tall',G:'Grande'};
-const TOPPINGS = [
+const DEMO_TOPPINGS = [
   {id:'nata',n:'Nata de Coco',p:15},{id:'pearls',n:'Pearls',p:15},{id:'oreo',n:'Crushed Oreos',p:15},
   {id:'graham',n:'Crushed Graham',p:15},{id:'mallow',n:'Marshmallows',p:15},{id:'cheese',n:'Extra Cheese',p:20},{id:'chunks',n:'Mango Chunks',p:20}
 ];
 // promos are discounts on a line, so reports show what each promo cost
-const PROMOS = [
+const DEMO_PROMOS = [
   {id:'freq',  n:'Frequency Card',      free:true},
   {id:'b1t1',  n:'B1T1 free drink',     free:true},
   {id:'fb',    n:'FB Commenter',        free:true},
   {id:'comp',  n:'Complimentary',       free:true},
   {id:'scpwd', n:'Senior / PWD 20%',    pct:20}
 ];
-// per-store settings; the owner side will set these (Karuhatan is non-VAT)
-const STORE = {name:'Karuhatan', vat:false};
+const SIZE_NAME = {R:'Regular',T:'Tall',G:'Grande'};
 const CHANNELS = [{id:'walkin',n:'Walk-in'},{id:'grab',n:'Grab'},{id:'panda',n:'Foodpanda'}];
 const VOID_REASONS = ['Wrong item','Customer cancelled','Duplicate entry','Training / test'];
-const byId = Object.fromEntries(MENU.map(d=>[d.id,d]));
-const topById = Object.fromEntries(TOPPINGS.map(t=>[t.id,t]));
-const promoById = Object.fromEntries(PROMOS.map(p=>[p.id,p]));
 
-// ---- storage (device-only in this prototype) ----
-const KEY = 'slpos.karuhatan.v1';
-function load(){ try{ const t = localStorage.getItem(KEY); return t ? JSON.parse(t) : null }catch(e){ return null } }
-function save(){ try{ localStorage.setItem(KEY, JSON.stringify(S)) }catch(e){} }
+// the catalog in use: demo constants, or the live one from HQ
+let SERIES = SERIES_BASE.slice(), MENU = DEMO_MENU, TOPPINGS = DEMO_TOPPINGS, PROMOS = DEMO_PROMOS;
+let STORE = {name:'Karuhatan', vat:false};
+let byId = {}, topById = {}, promoById = {};
+function indexCatalog(){
+  byId = Object.fromEntries(MENU.map(d=>[d.id,d]));
+  topById = Object.fromEntries(TOPPINGS.map(t=>[t.id,t]));
+  promoById = Object.fromEntries(PROMOS.map(p=>[p.id,p]));
+}
+function applyLiveCatalog(cat){
+  SERIES = SERIES_BASE.slice();
+  const sid = name => { let s = SERIES.find(x=>x.name===name); if(!s){ s = {id:name, name, c:'--s-classic'}; SERIES.push(s) } return s.id };
+  MENU = cat.menu.filter(r=>r.active).sort((a,b)=>a.sort-b.sort).map(r=>({id:r.id, s:sid(r.series), n:r.name, sizes:r.sizes, del:r.delivery}));
+  TOPPINGS = cat.toppings.filter(t=>t.active).map(t=>({id:t.id, n:t.name, p:+t.price}));
+  PROMOS = cat.promos.filter(p=>p.active).map(p=>p.kind==='free' ? {id:p.id, n:p.name, free:true} : {id:p.id, n:p.name, pct:+p.pct});
+  STORE = {name:cat.store.name, vat:!!cat.store.vat_registered};
+  indexCatalog();
+}
+indexCatalog();
+
+// ---- storage: each mode keeps its own copy on this device ----
+const KEY_DEMO = 'slpos.karuhatan.v1', KEY_LIVE = 'slpos.live.v1', KEY_MODE = 'slpos.mode';
+let MODE = 'demo';
+function loadKey(k){ try{ const t = localStorage.getItem(k); return t ? JSON.parse(t) : null }catch(e){ return null } }
+function save(){ try{ localStorage.setItem(MODE==='live' ? KEY_LIVE : KEY_DEMO, JSON.stringify(S)) }catch(e){} }
+function setMode(m){ MODE = m; try{ localStorage.setItem(KEY_MODE, m) }catch(_){} }
 function todayAt(h,m){ const d = new Date(); d.setHours(h,m,0,0); return d.getTime() }
+const uid = () => (crypto.randomUUID ? crypto.randomUUID() : 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => { const r = Math.random()*16|0; return (c==='x' ? r : (r&3|8)).toString(16) }));
+const iso = t => new Date(t).toISOString();
+const r2 = n => Math.round(n*100)/100;
 
 function mkLine(drinkId,size,ch,tops,promo,qty){
   const d = byId[drinkId];
@@ -326,40 +359,211 @@ function lineAmt(l){
 function totals(lines){ return lines.reduce((a,l)=>{ const x = lineAmt(l); a.gross+=x.gross; a.disc+=x.disc; a.net+=x.net; return a }, {gross:0,disc:0,net:0}) }
 
 // ---- state ----
-let S = load() || seed();
-S.time = S.time || [];
+let S = {crew:[], shift:null, sales:[], shifts:[], time:[], nextNo:1};
 const UI = {ch:'walkin', cat:'all', cart:[], pick:null, pay:null, voiding:null};
 const $ = id => document.getElementById(id);
 const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const fmtTime = t => new Date(t).toLocaleTimeString('en-PH',{hour:'numeric',minute:'2-digit'});
 const crewName = id => (S.crew.find(c=>c.id===id)||{}).name || '—';
-const lineName = l => byId[l.drinkId].n + ' (' + l.size + ')';
+const lineName = l => (byId[l.drinkId] ? byId[l.drinkId].n : l.drinkId) + ' (' + l.size + ')';
 
 let toastT;
 function toast(msg){ const t = $('toast'); t.textContent = msg; t.hidden = false; clearTimeout(toastT); toastT = setTimeout(()=>t.hidden=true, 2600) }
 
+// ---- live mode: outbox + background sync ----
+// Every sale, void, shift and time log is saved on the tablet first, then sent in order.
+// Each record carries an id made here, so sending it twice never creates a duplicate.
+let syncing = false;
+function enqueue(op){ if(MODE!=='live') return; S.outbox.push(op); save(); renderSync(); sync() }
+async function pushOp(op){
+  let r;
+  if(op.op==='shift') r = await sb.from('shifts').upsert(op.row, {onConflict:'id', ignoreDuplicates:true});
+  else if(op.op==='sale'){
+    r = await sb.from('sales').upsert(op.sale, {onConflict:'id', ignoreDuplicates:true});
+    if(!r.error) r = await sb.from('sale_lines').upsert(op.lines, {onConflict:'id', ignoreDuplicates:true});
+  }
+  else if(op.op==='void') r = await sb.from('sales').update({voided_at:op.voided_at, void_reason:op.void_reason, voided_by:op.voided_by}).eq('id', op.id);
+  else if(op.op==='close') r = await sb.from('shifts').update({closed_at:op.closed_at, counted_cash:op.counted_cash}).eq('id', op.id);
+  else if(op.op==='time') r = await sb.from('time_logs').upsert(op.row, {onConflict:'id', ignoreDuplicates:true});
+  return r && r.error ? r.error : null;
+}
+// a database refusal (bad data, not allowed) won't fix itself by retrying; a network or login hiccup will
+const isPermanent = e => /^(22|23|42|P0)/.test(String(e && e.code || ''));
+async function sync(){
+  if(MODE!=='live' || syncing || !sb || !navigator.onLine || !S.outbox.length){ renderSync(); return }
+  syncing = true; renderSync();
+  try{
+    while(S.outbox.length){
+      const op = S.outbox[0], err = await pushOp(op);
+      if(err){
+        if(isPermanent(err)){ S.failed.push(Object.assign({}, op, {error: String(err.message || err.code)})); S.outbox.shift(); save(); continue }
+        break;
+      }
+      S.outbox.shift(); S.lastSync = Date.now(); save();
+    }
+  }catch(_){ /* offline mid-send: the rest waits for the next try */ }
+  finally{ syncing = false; renderSync() }
+}
+function renderSync(){
+  const el = $('syncChip'); if(!el) return;
+  if(MODE!=='live'){ el.innerHTML = '<i class="dot off"></i>Demo · this device only'; return }
+  const n = S.outbox.length, f = (S.failed||[]).length, on = navigator.onLine;
+  let txt, cls = '';
+  if(f){ txt = f + ' couldn’t sync · tell HQ'; cls = ' bad' }
+  else if(!on){ txt = n ? 'Offline · ' + n + ' waiting' : 'Offline · still saving'; cls = ' off' }
+  else if(n){ txt = 'Syncing ' + n + '…'; cls = ' off' }
+  else txt = 'All synced';
+  el.innerHTML = `<i class="dot${cls}"></i>${txt}`;
+}
+
+// ---- live mode: tablet login + HQ's menu and crew ----
+async function refreshCatalog(){
+  if(MODE!=='live' || !sb || !navigator.onLine) return false;
+  try{
+    const [st, menu, tops, promos, crew, last] = await Promise.all([
+      sb.from('stores').select('id,name,vat_registered').eq('id', S.storeId).maybeSingle(),
+      sb.from('menu_items').select('id,series,name,sizes,delivery,sort,active'),
+      sb.from('toppings').select('id,name,price,active'),
+      sb.from('promos').select('id,name,kind,pct,active'),
+      sb.from('crew').select('id,name,role,active').eq('store_id', S.storeId).eq('active', true).order('name'),
+      sb.from('sales').select('sale_no').eq('store_id', S.storeId).order('sale_no', {ascending:false}).limit(1)
+    ]);
+    if([st, menu, tops, promos, crew, last].some(r=>r.error) || !st.data) return false;
+    S.catalog = {store:st.data, menu:menu.data, toppings:tops.data, promos:promos.data};
+    S.crew = crew.data.map(c=>({id:c.id, name:c.name, role:c.role}));
+    const dbMax = last.data.length ? last.data[0].sale_no : 0;
+    S.nextNo = Math.max(S.nextNo || 1, dbMax + 1);
+    applyLiveCatalog(S.catalog); save();
+    if(!UI.pick && !UI.pay){ renderTop(); renderChannels(); renderGrid() }
+    return true;
+  }catch(_){ return false }
+}
+async function setupFromSession(){
+  try{
+    const {data:{user}} = await sb.auth.getUser();
+    if(!user){ renderSetup(); return }
+    const prof = await sb.from('profiles').select('role').eq('user_id', user.id).maybeSingle();
+    if(prof.error || !prof.data || prof.data.role!=='device'){ await sb.auth.signOut(); renderSetup('This login isn’t a store tablet login. Use the store’s tablet login.'); return }
+    const st = await sb.from('stores').select('id').limit(1).maybeSingle();
+    if(st.error || !st.data){ renderSetup('This tablet login isn’t linked to a store yet. Ask HQ.'); return }
+    const prev = loadKey(KEY_LIVE);
+    S = prev && prev.storeId===st.data.id ? prev
+      : {live:true, storeId:st.data.id, deviceId:uid(), crew:[], shift:null, sales:[], shifts:[], time:[], nextNo:1, outbox:[], failed:[], pinCache:{}};
+    setMode('live');
+    if(!(await refreshCatalog())){ renderSetup('Couldn’t load the menu. Check the internet and try again.'); return }
+    closeScreen(); renderAll(); sync();
+  }catch(_){ renderSetup('Couldn’t reach the server. Check the internet and try again.') }
+}
+function renderSetup(msg){
+  showScreen(`<div class="panel"><div><h3 class="eyebrow">Sago Loco POS</h3><h1>Set up this tablet</h1>
+      <p class="hint">For HQ only: sign in once with the store’s tablet login. Crew never need this, they use their PIN.</p></div>
+    <form id="setupForm" class="card">
+      <div class="field"><label for="su_email">Tablet login email</label><input id="su_email" type="email" autocomplete="username" required></div>
+      <div class="field"><label for="su_pass">Password</label><input id="su_pass" type="password" autocomplete="current-password" required></div>
+      ${msg ? `<div class="callout bad">${esc(msg)}</div>` : ''}
+      <button class="charge" type="submit" id="su_btn">Sign in</button>
+    </form>
+    <button class="btn" data-act="demo" style="align-self:flex-start">Try the demo instead</button></div>`);
+}
+function startDemo(){
+  setMode('demo'); SERIES = SERIES_BASE.slice(); MENU = DEMO_MENU; TOPPINGS = DEMO_TOPPINGS; PROMOS = DEMO_PROMOS;
+  STORE = {name:'Karuhatan', vat:false}; indexCatalog();
+  S = loadKey(KEY_DEMO) || seed(); S.time = S.time || [];
+  closeScreen(); renderAll();
+}
+// keep the tablet light: synced records older than 2 days leave the device (the database keeps them)
+function prune(){
+  if(MODE!=='live') return;
+  const cut = Date.now() - 2*864e5, open = S.shift && S.shift.id;
+  S.sales = S.sales.filter(s => s.at > cut || s.shiftId===open);
+  S.shifts = S.shifts.filter(s => (s.closedAt||0) > cut);
+  S.time = S.time.filter(e => e.at > cut);
+}
+
+// ---- crew PINs: checked by the server; remembered on this tablet so they still work offline ----
+async function sha(s){ const b = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s)); return [...new Uint8Array(b)].map(x=>x.toString(16).padStart(2,'0')).join('') }
+async function checkPin(crewId, pin){
+  if(MODE==='demo'){ const c = S.crew.find(x=>x.id===crewId); return {ok: !!c && c.pin===pin} }
+  const key = await sha(crewId + ':' + pin);
+  if(navigator.onLine && sb){
+    try{
+      const r = await sb.rpc('verify_crew_pin', {p_crew:crewId, p_pin:pin});
+      if(r.error) throw r.error;
+      if(r.data){ S.pinCache[crewId] = key; save() }
+      return {ok: !!r.data};
+    }catch(_){ /* server unreachable: use the remembered PIN */ }
+  }
+  if(S.pinCache[crewId]) return {ok: S.pinCache[crewId]===key};
+  return {ok:false, msg:'Needs internet to check this PIN the first time.'};
+}
+async function hasPin(crewId){
+  if(MODE==='demo' || S.pinCache[crewId] || !navigator.onLine || !sb) return true;
+  try{ const r = await sb.rpc('crew_has_pin', {p_crew:crewId}); if(r.error) throw r.error; return !!r.data }catch(_){ return true }
+}
+async function claimPin(crewId, pin){
+  try{
+    const r = await sb.rpc('claim_crew_pin', {p_crew:crewId, p_pin:pin});
+    if(r.error) return {ok:false, msg:'Couldn’t save the PIN. Check the internet and try again.'};
+    if(!r.data) return {ok:false, msg:'This crew member already has a PIN. Ask HQ to reset it.'};
+    S.pinCache[crewId] = await sha(crewId + ':' + pin); save();
+    return {ok:true};
+  }catch(_){ return {ok:false, msg:'Couldn’t save the PIN. Check the internet and try again.'} }
+}
+const newPinState = extra => Object.assign({crew:null, pin:'', phase:'enter', first:'', status:null, msg:''}, extra||{});
+async function pickCrew(st, id, rerender){
+  Object.assign(st, {crew:id, pin:'', phase:'enter', first:'', status:null, msg:''}); rerender();
+  if(MODE==='live' && !(await hasPin(id)) && st.crew===id){ st.phase = 'new'; rerender() }
+}
+async function pinKey(st, k, rerender){
+  if(st.status==='checking' || st.status==='ok') return;
+  if(k==='⌫'){ st.pin = st.pin.slice(0,-1); st.status = null; st.msg = ''; rerender(); return }
+  if(st.pin.length>=4){ st.pin = ''; st.status = null; st.msg = '' }
+  st.pin += k; rerender();
+  if(st.pin.length<4) return;
+  if(st.phase==='new'){ st.first = st.pin; st.pin = ''; st.phase = 'confirm'; rerender(); return }
+  st.status = 'checking'; rerender();
+  if(st.phase==='confirm'){
+    if(st.pin!==st.first){ Object.assign(st, {phase:'new', first:'', pin:'', status:'bad', msg:'The two PINs didn’t match. Start again.'}); rerender(); return }
+    const r = await claimPin(st.crew, st.pin);
+    Object.assign(st, r.ok ? {status:'ok', msg:'', phase:'enter'} : {status:'bad', msg:r.msg, pin:'', phase:'new', first:''});
+    rerender(); return;
+  }
+  const r = await checkPin(st.crew, st.pin);
+  Object.assign(st, r.ok ? {status:'ok', msg:''} : {status:'bad', msg:r.msg || 'Wrong PIN. Try again.'});
+  rerender();
+}
+function pinHtml(st, act){
+  const name = esc(crewName(st.crew));
+  const head = st.phase==='new' ? `${name}, create your 4-digit PIN` : st.phase==='confirm' ? 'Enter the same PIN again' : `${name}, enter your PIN`;
+  return `<div class="field"><h3>${head}</h3>${st.phase!=='enter' ? '<p class="hint">First time on this tablet. Choose 4 numbers only you know.</p>' : ''}
+    <div class="pins">${[0,1,2,3].map(i=>`<i class="${i<st.pin.length?'on':''}"></i>`).join('')}</div>
+    <div class="pad">${[1,2,3,4,5,6,7,8,9,'',0,'⌫'].map(k=>k===''?'<span></span>':`<button data-act="${act}" data-k="${k}">${k}</button>`).join('')}</div>
+    ${st.status==='checking' ? '<div class="callout">Checking…</div>' : ''}${st.status==='bad' ? `<div class="callout bad">${esc(st.msg)}</div>` : ''}</div>`;
+}
+const demoPinHint = () => MODE==='demo' ? '<p class="hint">Demo PINs: Jovy 1111 · Neil 2222.</p>' : '';
+
 // ---- register ----
 function renderTop(){
+  $('storeName').textContent = STORE.name + (MODE==='demo' ? ' · demo' : '');
   $('shiftChip').textContent = S.shift ? crewName(S.shift.crewId) + ' · since ' + fmtTime(S.shift.openedAt) : 'No open shift';
-  $('demoChip').hidden = !S.demo;
+  $('demoChip').hidden = !(MODE==='demo' && S.demo);
   const u = upsellCount(), uc = $('upsChip');
   uc.hidden = !S.shift; uc.textContent = 'Upsells this shift: ' + u;
   if(UI.lastUps != null && u > UI.lastUps){ uc.classList.remove('bump'); void uc.offsetWidth; uc.classList.add('bump') }
   UI.lastUps = u;
-  const on = navigator.onLine;
-  $('syncChip').innerHTML = '<i class="dot'+(on?'':' off')+'"></i>' + (on ? 'Saved on this tablet' : 'Offline · still saving');
+  renderSync();
 }
 function renderChannels(){
   $('chSeg').innerHTML = CHANNELS.map(c=>`<button data-act="ch" data-id="${c.id}" aria-pressed="${UI.ch===c.id}">${c.n}</button>`).join('');
-  $('cats').innerHTML = [{id:'all',name:'All drinks'}].concat(SERIES).map(s=>`<button data-act="cat" data-id="${s.id}" aria-pressed="${UI.cat===s.id}">${s.name}</button>`).join('');
+  $('cats').innerHTML = [{id:'all',name:'All drinks'}].concat(SERIES.filter(s=>MENU.some(d=>d.s===s.id))).map(s=>`<button data-act="cat" data-id="${esc(s.id)}" aria-pressed="${UI.cat===s.id}">${esc(s.name)}</button>`).join('');
 }
 function priceTable(d){ return UI.ch==='walkin' ? d.sizes : d.del }
 function renderGrid(){
   const list = MENU.filter(d => (UI.cat==='all'||d.s===UI.cat) && priceTable(d));
   $('grid').innerHTML = list.map(d=>{
-    const s = SERIES.find(x=>x.id===d.s), pt = priceTable(d);
+    const s = SERIES.find(x=>x.id===d.s) || {c:'--s-classic'}, pt = priceTable(d);
     const pr = Object.keys(pt).map(k=>`${k} <span>${pt[k]}</span>`).join(' · ');
-    return `<button class="tile" data-act="pick" data-id="${d.id}" style="--sc:var(${s.c})"><b>${esc(d.n)}</b><span class="pr num">${pr}</span></button>`;
+    return `<button class="tile" data-act="pick" data-id="${esc(d.id)}" style="--sc:var(${s.c})"><b>${esc(d.n)}</b><span class="pr num">${pr}</span></button>`;
   }).join('') || '<p class="empty">No drinks in this series for this order source.</p>';
 }
 function renderTicket(){
@@ -390,10 +594,11 @@ function openPick(id){ UI.pick = {id, tops:[], promo:null, sc:{type:'Senior', na
 function renderPick(){
   const p = UI.pick, d = byId[p.id], pt = priceTable(d);
   const topSum = p.tops.reduce((a,t)=>a+topById[t].p,0);
-  showOv(`<div class="sh-top"><div><h3>${esc(SERIES.find(s=>s.id===d.s).name)}</h3><h2>${esc(d.n)}</h2></div><button class="x" data-act="closeov" aria-label="Close">×</button></div>
+  const series = (SERIES.find(s=>s.id===d.s) || {name:''}).name;
+  showOv(`<div class="sh-top"><div><h3>${esc(series)}</h3><h2>${esc(d.n)}</h2></div><button class="x" data-act="closeov" aria-label="Close">×</button></div>
     <div class="field"><h3>Tap a size to add · add-ons or promo first if needed</h3><div class="sizes">${Object.keys(pt).map(k=>`<button class="size${k==='G'?' grande':''}" data-act="add" data-size="${k}"><b>${SIZE_NAME[k]}</b><span class="num">${peso(pt[k]+topSum)}</span>${k==='G'&&pt.T&&pt.G>pt.T?`<small class="num">Only +${peso(pt.G-pt.T)} more</small>`:''}</button>`).join('')}</div></div>
-    <div class="field"><h3>Add-ons</h3><div class="pills">${TOPPINGS.map(t=>`<button class="pill" data-act="ptop" data-id="${t.id}" aria-pressed="${p.tops.includes(t.id)}">${t.n} +${t.p}</button>`).join('')}</div></div>
-    <div class="field"><h3>Promo or discount</h3><div class="pills">${PROMOS.map(x=>`<button class="pill" data-act="ppromo" data-id="${x.id}" aria-pressed="${p.promo===x.id}">${x.n}</button>`).join('')}</div></div>
+    <div class="field"><h3>Add-ons</h3><div class="pills">${TOPPINGS.map(t=>`<button class="pill" data-act="ptop" data-id="${esc(t.id)}" aria-pressed="${p.tops.includes(t.id)}">${esc(t.n)} +${t.p}</button>`).join('')}</div></div>
+    <div class="field"><h3>Promo or discount</h3><div class="pills">${PROMOS.map(x=>`<button class="pill" data-act="ppromo" data-id="${esc(x.id)}" aria-pressed="${p.promo===x.id}">${esc(x.n)}</button>`).join('')}</div></div>
     ${p.promo==='scpwd'?`<div class="card"><h3>Required for the senior / PWD sales record</h3>
       <div class="seg" role="group" aria-label="Discount type">${['Senior','PWD'].map(t=>`<button data-act="sctype" data-id="${t}" aria-pressed="${p.sc.type===t}">${t==='Senior'?'Senior citizen':'PWD'}</button>`).join('')}</div>
       <div class="field"><label for="scname">Customer’s full name</label><input id="scname" autocomplete="off" value="${esc(p.sc.name)}"></div>
@@ -436,9 +641,16 @@ function renderPay(){
 }
 function completeSale(){
   const t = totals(UI.cart), p = UI.pay, tend = p.method==='cash' ? parseFloat(p.tendered)||0 : null;
-  const sale = {id:'s'+S.nextNo, no:S.nextNo, at:Date.now(), shiftId:S.shift.id, crewId:S.shift.crewId, ch:UI.ch, pay:p.method,
+  const sale = {id: MODE==='live' ? uid() : 's'+S.nextNo, no:S.nextNo, at:Date.now(), shiftId:S.shift.id, crewId:S.shift.crewId, ch:UI.ch, pay:p.method,
     lines:UI.cart, gross:t.gross, disc:t.disc, total:t.net, tendered:tend, change: tend!=null ? tend - t.net : null, void:null};
   S.sales.push(sale); S.nextNo++; save();
+  if(MODE==='live'){
+    const lines = sale.lines.map(l=>{ const a = lineAmt(l); l.lid = uid();
+      return {id:l.lid, sale_id:sale.id, menu_item_id:l.drinkId, size:l.size, qty:l.qty, base_price:l.base, toppings:l.tops, toppings_price:l.top,
+        promo_id:l.promo, discount:r2(a.disc), net:r2(a.net), sc_type:l.sc?l.sc.type:null, sc_name:l.sc?l.sc.name:null, sc_id_no:l.sc?l.sc.id:null} });
+    enqueue({op:'sale', lines, sale:{id:sale.id, store_id:S.storeId, shift_id:sale.shiftId, crew_id:sale.crewId, sale_no:sale.no, channel:sale.ch, pay:sale.pay,
+      gross:r2(sale.gross), discount:r2(sale.disc), total:r2(sale.total), tendered:sale.tendered, change_due:sale.change==null?null:r2(sale.change), created_at:iso(sale.at)}});
+  }
   UI.cart = []; closeOv(); setTicket(false); renderTicket(); renderTop();
   toast('Sale #' + sale.no + ' saved' + (sale.change ? ' · Change ' + peso(sale.change) : ''));
 }
@@ -467,25 +679,23 @@ function summary(sh){
   ok.forEach(s=>s.lines.forEach(l=>{
     const k = lineName(l), a = lineAmt(l);
     mix[k] = mix[k] || {q:0,amt:0}; mix[k].q += l.qty; mix[k].amt += a.net;
-    if(l.promo){ const pn = promoById[l.promo].n; promos[pn] = promos[pn] || {q:0,amt:0}; promos[pn].q += l.qty; promos[pn].amt += a.disc }
+    if(l.promo){ const pn = (promoById[l.promo]||{n:l.promo}).n; promos[pn] = promos[pn] || {q:0,amt:0}; promos[pn].q += l.qty; promos[pn].amt += a.disc }
     if(l.sc) sc.push({no:s.no, type:l.sc.type, name:l.sc.name, id:l.sc.id, disc:a.disc});
   }));
   const cashSales = sum(s=>s.pay==='cash'?s.total:0);
   return {all, ok, net:sum(s=>s.total), disc:sum(s=>s.disc), n:ok.length, voids:all.filter(s=>s.void),
     byPay:by('pay'), byCh:by('ch'), mix, promos, sc, cashSales, expected: sh.startCash + cashSales};
 }
-let openState = {crew:null, pin:'', cash:''};
+let openState = newPinState({cash:''});
 function renderOpen(){
-  const o = openState, c = S.crew.find(x=>x.id===o.crew), okPin = c && o.pin===c.pin;
-  showScreen(`<div class="panel"><div><h3 style="margin:0 0 6px;color:var(--muted);font-size:12px;letter-spacing:.08em;text-transform:uppercase">Sago Loco · Karuhatan</h3><h1>Open a shift</h1></div>
-    <div class="field"><h3>Who’s on the counter?</h3><div class="crew">${S.crew.map(x=>`<button data-act="ocrew" data-id="${x.id}" aria-pressed="${o.crew===x.id}">${x.name}</button>`).join('')}</div></div>
-    ${o.crew?`<div class="field"><h3>${esc(c.name)}, enter your PIN</h3><div class="pins">${[0,1,2,3].map(i=>`<i class="${i<o.pin.length?'on':''}"></i>`).join('')}</div>
-      <div class="pad">${[1,2,3,4,5,6,7,8,9,'',0,'⌫'].map(k=>k===''?'<span></span>':`<button data-act="opin" data-k="${k}">${k}</button>`).join('')}</div>
-      ${o.pin.length===4 && !okPin ? '<div class="callout bad">Wrong PIN. Try again.</div>' : ''}</div>`:''}
-    ${okPin?`<div class="field"><label for="startcash">Count the starting cash in the drawer</label><input id="startcash" class="num" inputmode="decimal" autocomplete="off" placeholder="e.g. 1000" value="${esc(o.cash)}"></div>
+  const o = openState, ok = o.status==='ok';
+  showScreen(`<div class="panel"><div><h3 class="eyebrow">Sago Loco · ${esc(STORE.name)}</h3><h1>Open a shift</h1></div>
+    <div class="field"><h3>Who’s on the counter?</h3><div class="crew">${S.crew.map(x=>`<button data-act="ocrew" data-id="${x.id}" aria-pressed="${o.crew===x.id}">${esc(x.name)}</button>`).join('') || '<p class="hint">No crew yet. Ask HQ to add this store’s crew.</p>'}</div></div>
+    ${o.crew && !ok ? pinHtml(o, 'opin') : ''}
+    ${ok?`<div class="field"><label for="startcash">Count the starting cash in the drawer</label><input id="startcash" class="num" inputmode="decimal" autocomplete="off" placeholder="e.g. 1000" value="${esc(o.cash)}"></div>
       <button class="charge" data-act="oopen" id="obtn" ${o.cash!==''?'':'disabled'}>Open shift</button>`:''}
     <button class="btn" data-act="clock" style="align-self:flex-start">Time in / out instead</button>
-    <p class="hint">Demo PINs: Jovy 1111 · Neil 2222.</p></div>`);
+    ${demoPinHint()}</div>`);
   const sc = $('startcash'); if(sc) sc.focus();
 }
 function renderClose(counted){
@@ -496,7 +706,7 @@ function renderClose(counted){
     <div class="field"><label for="counted">Count the cash in the drawer now</label><input id="counted" class="num" inputmode="decimal" autocomplete="off" placeholder="0" value="${esc(counted)}"></div>
     <div class="callout ${!has?'':Math.abs(diff)<0.01?'good':'bad'} num" id="ovs"><span>${!has?'Over / short':diff>0?'Over':diff<0?'Short':'Balanced'}</span><span>${has?peso(Math.abs(diff)):'—'}</span></div>
     <button class="charge" data-act="cclose" id="cbtn" ${has?'':'disabled'}>Close shift &amp; print Z report</button>
-    <p class="hint">${crewName(sh.crewId)} · opened ${fmtTime(sh.openedAt)} · ${m.n} sales</p></div>`);
+    <p class="hint">${esc(crewName(sh.crewId))} · opened ${fmtTime(sh.openedAt)} · ${m.n} sales</p></div>`);
   const ci = $('counted'); ci.focus(); ci.setSelectionRange(ci.value.length, ci.value.length);
 }
 function renderZ(sh){
@@ -504,8 +714,8 @@ function renderZ(sh){
   const rows = (o,fmt) => Object.entries(o).sort((a,b)=>(b[1].amt??b[1])-(a[1].amt??a[1])).map(fmt).join('');
   const chN = id => (CHANNELS.find(c=>c.id===id)||{n:id}).n, payN = {cash:'Cash',gcash:'GCash',grab:'Grab',panda:'Foodpanda'};
   showScreen(`<div class="panel">
-    <div><h3 style="margin:0 0 6px;color:var(--muted);font-size:12px;letter-spacing:.08em;text-transform:uppercase">Z report · Karuhatan · ${new Date(sh.openedAt).toLocaleDateString('en-PH',{month:'short',day:'numeric',year:'numeric'})}</h3>
-      <h1>${crewName(sh.crewId)}’s shift</h1><p class="hint">${fmtTime(sh.openedAt)} – ${fmtTime(sh.closedAt)} · Internal record, not an official invoice</p></div>
+    <div><h3 class="eyebrow">Z report · ${esc(STORE.name)} · ${new Date(sh.openedAt).toLocaleDateString('en-PH',{month:'short',day:'numeric',year:'numeric'})}</h3>
+      <h1>${esc(crewName(sh.crewId))}’s shift</h1><p class="hint">${fmtTime(sh.openedAt)} – ${fmtTime(sh.closedAt)} · Internal record, not an official invoice</p></div>
     <div class="kpis num"><div class="kpi"><b>${peso(m.net)}</b><span>Net sales</span></div><div class="kpi"><b>${m.n}</b><span>Sales</span></div><div class="kpi"><b>${peso(m.n?m.net/m.n:0)}</b><span>Average sale</span></div></div>
     <div class="card num"><h3>Cash drawer</h3>
       <div class="row"><span>Starting cash</span><span>${peso(sh.startCash)}</span></div><div class="row"><span>Cash sales</span><span>${peso(m.cashSales)}</span></div>
@@ -540,9 +750,9 @@ function crewDay(id){
   return {ev, status, worked, brk};
 }
 const nextActs = st => st==='out' ? ['in'] : st==='in' ? ['bstart','out'] : ['bend'];
-let tc = {crew:null, pin:'', act:null};
+let tc = newPinState({act:null});
 function renderClock(){
-  const c = tc.crew && S.crew.find(x=>x.id===tc.crew), ok = c && tc.pin===c.pin;
+  const c = tc.crew && S.crew.find(x=>x.id===tc.crew), ok = !!c && tc.status==='ok';
   const stTxt = {in:'On duty', break:'On break', out:'Off duty'};
   let body;
   if(!c) body = S.crew.map(x=>{
@@ -551,16 +761,14 @@ function renderClock(){
       <button class="btn primary" data-act="tcrew" data-id="${x.id}">${d.status==='out' ? 'Time in' : d.status==='break' ? 'End break' : 'Break / out'}</button>
       <div class="times num"><span>In <b>${first?fmtTime(first.at):'—'}</b></span><span>Out <b>${last && d.status==='out'?fmtTime(last.at):'—'}</b></span><span>Worked <b>${hm(d.worked)}</b></span><span>Breaks <b>${hm(d.brk)}</b></span></div>
       ${d.ev.length?`<div class="shots">${d.ev.map(e=>`<div class="shot">${e.photo?`<img src="${e.photo}" alt="${esc(x.name)} ${TC_LABEL[e.type]} selfie">`:'<span class="ph"></span>'}${TC_LABEL[e.type]} ${fmtTime(e.at)}</div>`).join('')}</div>`:''}</div>`;
-  }).join('');
-  else if(!ok) body = `<div class="field"><h3>${esc(c.name)}, enter your PIN</h3><div class="pins">${[0,1,2,3].map(i=>`<i class="${i<tc.pin.length?'on':''}"></i>`).join('')}</div>
-      <div class="pad">${[1,2,3,4,5,6,7,8,9,'',0,'⌫'].map(k=>k===''?'<span></span>':`<button data-act="tpin" data-k="${k}">${k}</button>`).join('')}</div>
-      ${tc.pin.length===4 ? '<div class="callout bad">Wrong PIN. Try again.</div>' : ''}</div>`;
+  }).join('') || '<p class="hint">No crew yet. Ask HQ to add this store’s crew.</p>';
+  else if(!ok) body = pinHtml(tc, 'tpin');
   else if(!tc.act) body = `<div class="acts">${nextActs(crewDay(c.id).status).map(a=>`<button class="charge" data-act="tact" data-a="${a}">${TC_LABEL[a]}</button>`).join('')}</div>`;
   else body = `<div class="card"><h3>${TC_LABEL[tc.act]} · ${esc(c.name)}</h3><p class="hint">Take a selfie at the counter so the time is confirmed.</p>
       <label class="charge" for="selfie" style="text-align:center">Open camera</label>
       <input type="file" id="selfie" accept="image/*" capture="user" hidden></div>`;
   showScreen(`<div class="panel"><div class="row"><h1>${c ? esc(c.name) : 'Time in / out'}</h1><button class="x" data-act="${c?'tback':'clockdone'}" aria-label="Back">×</button></div>
-    ${body}<p class="hint">Times use this tablet’s clock. Demo PINs: Jovy 1111 · Neil 2222.</p></div>`);
+    ${body}<p class="hint">Times use this tablet’s clock.</p>${demoPinHint()}</div>`);
 }
 function saveSelfie(file){
   const img = new Image(), url = URL.createObjectURL(file);
@@ -568,10 +776,12 @@ function saveSelfie(file){
     const s = 240, cv = document.createElement('canvas'), k = Math.min(s/img.width, s/img.height, 1);
     cv.width = Math.round(img.width*k); cv.height = Math.round(img.height*k);
     cv.getContext('2d').drawImage(img, 0, 0, cv.width, cv.height); URL.revokeObjectURL(url);
-    const ev = {crewId:tc.crew, type:tc.act, at:Date.now(), photo:cv.toDataURL('image/jpeg', .7)};
+    const ev = {id: uid(), crewId:tc.crew, type:tc.act, at:Date.now(), photo:cv.toDataURL('image/jpeg', .7)};
     S.time.push(ev); save();
+    // selfie upload comes with photo storage (roadmap F-06); the time itself syncs now
+    enqueue({op:'time', row:{id:ev.id, store_id:S.storeId, crew_id:ev.crewId, type:ev.type, at:iso(ev.at), photo_path:null}});
     toast(crewName(ev.crewId) + ': ' + TC_LABEL[ev.type] + ' at ' + fmtTime(ev.at));
-    tc = {crew:null, pin:'', act:null}; renderClock();
+    tc = newPinState({act:null}); renderClock();
   };
   img.onerror = ()=>{ URL.revokeObjectURL(url); toast('That photo could not be read. Try again.') };
   img.src = url;
@@ -602,22 +812,26 @@ function celebrate(el, big, label){
 // ---- settings menu: shift tools that aren't needed every order ----
 function renderMenu(){
   const item = (act, t, sub) => `<button class="mitem" data-act="${act}">${t}<small>${sub}</small></button>`;
-  showOv(`<div class="sh-top"><div><h3>Karuhatan</h3><h2>Shift tools</h2></div><button class="x" data-act="closeov" aria-label="Close">×</button></div>
+  const live = MODE==='live', waiting = live ? S.outbox.length : 0;
+  showOv(`<div class="sh-top"><div><h3>${esc(STORE.name)}</h3><h2>Shift tools</h2></div><button class="x" data-act="closeov" aria-label="Close">×</button></div>
     <div class="acts">${item('clock','Time in / out','Selfie clock-in, breaks, clock-out')}
     ${S.shift ? item('sales','Today’s sales','This shift’s sales and voids') + item('close','Close shift','Count the cash and print the Z report') : ''}
-    ${S.demo ? item('reset','Reset demo','Reload the sample sales') : ''}</div>`);
+    ${live ? item('syncnow','Sync now', waiting ? waiting + ' waiting to send' : 'Everything is sent') : ''}
+    ${live && !S.shift ? (UI.confirmSignout ? item('signout','Tap again to sign out','HQ will need the tablet login to set it up again') : item('signout','Sign out this tablet','For HQ: unlink this tablet from the store')) : ''}
+    ${!live && S.demo ? item('reset','Reset demo','Reload the sample sales') : ''}
+    ${!live ? item('setup','Set up this tablet','For HQ: connect it to a store') : ''}</div>`);
 }
 
 // ---- overlay plumbing ----
 function showOv(html){ const o = $('ov'); o.innerHTML = `<div class="sheet" role="dialog" aria-modal="true">${html}</div>`; o.hidden = false }
-function closeOv(){ $('ov').hidden = true; $('ov').innerHTML = ''; UI.pick = null; UI.pay = null; UI.voiding = null; UI.vreason = null }
+function closeOv(){ $('ov').hidden = true; $('ov').innerHTML = ''; UI.pick = null; UI.pay = null; UI.voiding = null; UI.vreason = null; UI.confirmSignout = false }
 function showScreen(html){ const s = $('screen'); s.innerHTML = html; s.hidden = false; s.scrollTop = 0 }
 function closeScreen(){ $('screen').hidden = true; $('screen').innerHTML = '' }
 
 // phone only: the order slides up over the menu; the scrim and "Back to menu" close it
 function setTicket(open){ $('ticket').classList.toggle('open', open); $('scrim').classList.toggle('on', open) }
 
-function renderAll(){ renderTop(); renderChannels(); renderGrid(); renderTicket(); if(!S.shift){ openState = {crew:null,pin:'',cash:''}; renderOpen() } }
+function renderAll(){ renderTop(); renderChannels(); renderGrid(); renderTicket(); if(!S.shift){ openState = newPinState({cash:''}); renderOpen() } }
 
 document.addEventListener('click', e=>{
   const b = e.target.closest('[data-act]');
@@ -647,24 +861,47 @@ document.addEventListener('click', e=>{
     case 'void': UI.voiding = id; UI.vreason = null; renderSales(); break;
     case 'vreason': UI.vreason = b.dataset.r; renderSales(); break;
     case 'vcancel': UI.voiding = null; renderSales(); break;
-    case 'vconfirm': { const s = S.sales.find(x=>x.id===UI.voiding); s.void = {reason:UI.vreason, at:Date.now(), by:S.shift.crewId}; save(); UI.voiding = null; toast('Sale #' + s.no + ' voided'); renderSales(); renderTop(); break }
+    case 'vconfirm': { const s = S.sales.find(x=>x.id===UI.voiding); s.void = {reason:UI.vreason, at:Date.now(), by:S.shift.crewId}; save();
+      enqueue({op:'void', id:s.id, voided_at:iso(s.void.at), void_reason:s.void.reason, voided_by:s.void.by});
+      UI.voiding = null; toast('Sale #' + s.no + ' voided'); renderSales(); renderTop(); break }
     case 'close': closeOv(); if(S.shift){ if(UI.cart.length){ toast('Finish or clear the current order first'); return } renderClose('') } break;
     case 'closescreen': closeScreen(); break;
     case 'menu': renderMenu(); break;
-    case 'clock': closeOv(); tc = {crew:null, pin:'', act:null}; renderClock(); break;
+    case 'clock': closeOv(); tc = newPinState({act:null}); renderClock(); break;
     case 'clockdone': closeScreen(); if(!S.shift) renderOpen(); break;
-    case 'tcrew': tc = {crew:id, pin:'', act:null}; renderClock(); break;
-    case 'tback': tc = {crew:null, pin:'', act:null}; renderClock(); break;
-    case 'tpin': { const k = b.dataset.k; if(k==='⌫') tc.pin = tc.pin.slice(0,-1); else if(tc.pin.length===4) tc.pin = k; else tc.pin += k; renderClock(); break }
+    case 'tcrew': tc = newPinState({act:null}); pickCrew(tc, id, renderClock); break;
+    case 'tback': tc = newPinState({act:null}); renderClock(); break;
+    case 'tpin': pinKey(tc, b.dataset.k, renderClock); break;
     case 'tact': tc.act = b.dataset.a; renderClock(); break;
-    case 'cclose': { const c = parseFloat($('counted').value); const sh = S.shift; sh.counted = c; sh.closedAt = Date.now(); S.shifts.push(sh); S.shift = null; save(); renderZ(sh); renderTop(); break }
-    case 'newshift': openState = {crew:null,pin:'',cash:''}; renderOpen(); break;
-    case 'ocrew': openState = {crew:id,pin:'',cash:''}; renderOpen(); break;
-    case 'opin': { const k = b.dataset.k; if(k==='⌫') openState.pin = openState.pin.slice(0,-1); else if(openState.pin.length===4) openState.pin = k; else openState.pin += k; renderOpen(); break }
+    case 'cclose': { const c = parseFloat($('counted').value); const sh = S.shift; sh.counted = c; sh.closedAt = Date.now(); S.shifts.push(sh); S.shift = null; save();
+      enqueue({op:'close', id:sh.id, closed_at:iso(sh.closedAt), counted_cash:c});
+      renderZ(sh); renderTop(); break }
+    case 'newshift': openState = newPinState({cash:''}); renderOpen(); break;
+    case 'ocrew': openState = newPinState({cash:''}); pickCrew(openState, id, renderOpen); break;
+    case 'opin': pinKey(openState, b.dataset.k, renderOpen); break;
     case 'oopen': { const cash = parseFloat(openState.cash); if(isNaN(cash)) return;
-      S.shift = {id:'sh'+Date.now(), crewId:openState.crew, openedAt:Date.now(), startCash:cash}; S.demo = S.demo && false; save(); closeScreen(); renderAll(); toast('Shift opened · ' + peso(cash) + ' starting cash'); break }
-    case 'reset': try{ localStorage.removeItem(KEY) }catch(_){} S = seed(); UI.cart = []; closeOv(); closeScreen(); renderAll(); toast('Demo reset'); break;
+      S.shift = {id: MODE==='live' ? uid() : 'sh'+Date.now(), crewId:openState.crew, openedAt:Date.now(), startCash:cash}; S.demo = false; save();
+      enqueue({op:'shift', row:{id:S.shift.id, store_id:S.storeId, crew_id:S.shift.crewId, opened_at:iso(S.shift.openedAt), start_cash:cash, device_id:S.deviceId}});
+      closeScreen(); renderAll(); toast('Shift opened · ' + peso(cash) + ' starting cash'); break }
+    case 'reset': try{ localStorage.removeItem(KEY_DEMO) }catch(_){} S = seed(); UI.cart = []; closeOv(); closeScreen(); renderAll(); toast('Demo reset'); break;
+    case 'demo': startDemo(); break;
+    case 'setup': closeOv(); renderSetup(); break;
+    case 'syncnow': closeOv(); if(navigator.onLine){ refreshCatalog(); sync(); toast('Syncing…') } else toast('No internet right now. Everything is saved on this tablet.'); break;
+    case 'signout':
+      if(S.outbox.length){ toast('Wait until everything is synced before signing out'); return }
+      if(!UI.confirmSignout){ UI.confirmSignout = true; renderMenu(); UI.confirmSignout = true; return }
+      closeOv(); (sb ? sb.auth.signOut() : Promise.resolve()).finally(()=>{ try{ localStorage.removeItem(KEY_LIVE); localStorage.removeItem(KEY_MODE) }catch(_){} S = {crew:[], shift:null, sales:[], shifts:[], time:[], nextNo:1}; renderSetup() });
+      break;
   }
+});
+document.addEventListener('submit', async e=>{
+  if(e.target.id!=='setupForm') return;
+  e.preventDefault();
+  if(!sb){ renderSetup('Couldn’t load the sign-in tools. Check the internet and reload.'); return }
+  const btn = $('su_btn'); btn.disabled = true; btn.textContent = 'Signing in…';
+  const {error} = await sb.auth.signInWithPassword({email:$('su_email').value.trim(), password:$('su_pass').value});
+  if(error){ renderSetup('Sign-in didn’t work: ' + error.message); return }
+  await setupFromSession();
 });
 document.addEventListener('input', e=>{
   const t = e.target;
@@ -682,6 +919,25 @@ document.addEventListener('keydown', e=>{
   if(e.key==='Enter' && e.target.id==='tendered' && !$('cpl').disabled) completeSale();
 });
 document.addEventListener('change', e=>{ if(e.target.id==='selfie' && e.target.files[0]) saveSelfie(e.target.files[0]) });
-addEventListener('online', renderTop); addEventListener('offline', renderTop);
-renderAll();
+addEventListener('online', ()=>{ renderSync(); refreshCatalog(); sync() });
+addEventListener('offline', renderSync);
+setInterval(()=>{ sync() }, 20000);
+setInterval(()=>{ refreshCatalog() }, 5*60000);
+
+// ---- start: a set-up tablet opens straight to its store; otherwise HQ sets it up (or tries the demo) ----
+(async function boot(){
+  let session = null;
+  if(sb){ try{ session = (await sb.auth.getSession()).data.session }catch(_){} }
+  const live = loadKey(KEY_LIVE), mode = (()=>{ try{ return localStorage.getItem(KEY_MODE) }catch(_){ return null } })();
+  if(live && live.storeId && mode==='live' && (session || !navigator.onLine)){
+    MODE = 'live'; S = live; S.outbox = S.outbox||[]; S.failed = S.failed||[]; S.pinCache = S.pinCache||{}; S.time = S.time||[];
+    if(S.catalog) applyLiveCatalog(S.catalog);
+    prune(); save(); renderAll(); refreshCatalog(); sync(); return;
+  }
+  if(session){ await setupFromSession(); return }
+  if(mode==='demo'){ startDemo(); return }
+  renderSetup();
+})();
+if('serviceWorker' in navigator && location.protocol==='https:') navigator.serviceWorker.register('sw.js').catch(()=>{});
 </script>
+
