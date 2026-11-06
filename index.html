@@ -37,6 +37,9 @@ body{background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:1
 *{box-sizing:border-box}
 [hidden]{display:none!important}
 button{font:inherit;color:inherit;cursor:pointer;border:0;background:none}
+/* stop iPhone double-tap zoom on fast taps (PIN pad, +/-); pinch zoom still works */
+html,button,a,label,input{touch-action:manipulation}
+.pad button,.qty button,.tile,.size,.pill{-webkit-user-select:none;user-select:none}
 button:focus-visible,input:focus-visible{outline:3px solid var(--ube);outline-offset:2px}
 .num{font-variant-numeric:tabular-nums}
 #app{height:100%;display:flex;flex-direction:column;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
