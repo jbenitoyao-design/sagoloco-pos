@@ -1,6 +1,6 @@
 // Sago Loco POS offline helper: keeps the app itself on the tablet so it opens without internet.
 // Sales data never goes through here; the app saves it on the tablet and syncs it to the database.
-const CACHE = 'slpos-v1';
+const CACHE = 'slpos-v2';
 const LIB = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js';
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(['./', LIB])).then(() => self.skipWaiting()));

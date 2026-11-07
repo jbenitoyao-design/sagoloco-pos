@@ -441,6 +441,36 @@ async function refreshCatalog(){
     return true;
   }catch(_){ return false }
 }
+// one open shift per store: if a shift is already open in the database (opened on another
+// tablet, or before the app was reinstalled), continue it here instead of starting a second one
+async function adoptOpenShift(){
+  if(MODE!=='live' || !sb || !navigator.onLine || S.shift) return false;
+  try{
+    const r = await sb.from('shifts').select('id,crew_id,opened_at,start_cash').eq('store_id', S.storeId).is('closed_at', null).order('opened_at', {ascending:false}).limit(1);
+    if(r.error || !r.data.length) return false;
+    const row = r.data[0];
+    if(S.outbox.some(o=>o.op==='close' && o.id===row.id) || S.shifts.some(x=>x.id===row.id)) return false;   // closed here, still syncing
+    const ss = await sb.from('sales').select('id,sale_no,crew_id,channel,pay,gross,discount,total,tendered,change_due,created_at,voided_at,void_reason,voided_by,sale_lines(menu_item_id,size,qty,base_price,toppings,toppings_price,promo_id,sc_type)').eq('shift_id', row.id).order('sale_no');
+    if(ss.error) return false;
+    S.shift = {id:row.id, crewId:row.crew_id, openedAt:Date.parse(row.opened_at), startCash:Number(row.start_cash)};
+    const have = new Set(S.sales.map(x=>x.id)), n = v => v==null ? null : Number(v);
+    ss.data.forEach(x=>{ if(have.has(x.id)) return;
+      S.sales.push({id:x.id, no:x.sale_no, at:Date.parse(x.created_at), shiftId:row.id, crewId:x.crew_id, ch:x.channel, pay:x.pay,
+        lines:(x.sale_lines||[]).map(l=>({drinkId:l.menu_item_id, size:l.size, qty:l.qty, base:Number(l.base_price), top:Number(l.toppings_price), tops:l.toppings||[], promo:l.promo_id,
+          sc: l.sc_type ? {type:l.sc_type, name:'(on file at HQ)', id:''} : null})),
+        gross:Number(x.gross), disc:Number(x.discount), total:Number(x.total), tendered:n(x.tendered), change:n(x.change_due),
+        void: x.voided_at ? {reason:x.void_reason, at:Date.parse(x.voided_at), by:x.voided_by} : null});
+    });
+    S.sales.sort((a,b)=>a.no-b.no); save();
+    return true;
+  }catch(_){ return false }
+}
+async function openShift(cash){
+  if(await adoptOpenShift()){ closeScreen(); renderAll(); toast('Continuing ' + crewName(S.shift.crewId) + '’s open shift. Close it first to start a new one.'); return }
+  S.shift = {id: MODE==='live' ? uid() : 'sh'+Date.now(), crewId:openState.crew, openedAt:Date.now(), startCash:cash}; S.demo = false; save();
+  enqueue({op:'shift', row:{id:S.shift.id, store_id:S.storeId, crew_id:S.shift.crewId, opened_at:iso(S.shift.openedAt), start_cash:cash, device_id:S.deviceId}});
+  closeScreen(); renderAll(); toast('Shift opened · ' + peso(cash) + ' starting cash');
+}
 async function setupFromSession(){
   try{
     const {data:{user}} = await sb.auth.getUser();
@@ -454,6 +484,7 @@ async function setupFromSession(){
       : {live:true, storeId:st.data.id, deviceId:uid(), crew:[], shift:null, sales:[], shifts:[], time:[], nextNo:1, outbox:[], failed:[], pinCache:{}};
     setMode('live');
     if(!(await refreshCatalog())){ renderSetup('Couldn’t load the menu. Check the internet and try again.'); return }
+    await adoptOpenShift();
     closeScreen(); renderAll(); sync();
   }catch(_){ renderSetup('Couldn’t reach the server. Check the internet and try again.') }
 }
@@ -883,9 +914,7 @@ document.addEventListener('click', e=>{
     case 'ocrew': openState = newPinState({cash:''}); pickCrew(openState, id, renderOpen); break;
     case 'opin': pinKey(openState, b.dataset.k, renderOpen); break;
     case 'oopen': { const cash = parseFloat(openState.cash); if(isNaN(cash)) return;
-      S.shift = {id: MODE==='live' ? uid() : 'sh'+Date.now(), crewId:openState.crew, openedAt:Date.now(), startCash:cash}; S.demo = false; save();
-      enqueue({op:'shift', row:{id:S.shift.id, store_id:S.storeId, crew_id:S.shift.crewId, opened_at:iso(S.shift.openedAt), start_cash:cash, device_id:S.deviceId}});
-      closeScreen(); renderAll(); toast('Shift opened · ' + peso(cash) + ' starting cash'); break }
+      b.disabled = true; openShift(cash); break }
     case 'reset': try{ localStorage.removeItem(KEY_DEMO) }catch(_){} S = seed(); UI.cart = []; closeOv(); closeScreen(); renderAll(); toast('Demo reset'); break;
     case 'demo': startDemo(); break;
     case 'setup': closeOv(); renderSetup(); break;
