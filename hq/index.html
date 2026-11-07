@@ -1,0 +1,276 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<meta name="theme-color" content="#6B3FA0">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Sago Loco HQ">
+<title>Sago Loco HQ</title>
+<style>
+:root{
+  --bg:#F4F3F6; --surface:#FFFFFF; --surface-2:#ECEAF0; --ink:#251C2E; --muted:#6B6475; --line:#DEDAE4;
+  --accent:#F2A20C; --hi:#6B3FA0; --hi-ink:#FFFFFF; --bar:#6B3FA0; --bar-dim:#CFC3E0;
+  --good:#1E8549; --bad:#C2412D; --good-bg:#E3F3E9; --bad-bg:#FBE7E3; --r:14px;
+  color-scheme:light;
+}
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){
+  --bg:#141118; --surface:#1E1A24; --surface-2:#2A2432; --ink:#F2EEF6; --muted:#A99FB3; --line:#383040;
+  --accent:#F5B23A; --hi:#B892E6; --hi-ink:#1A1420; --bar:#B892E6; --bar-dim:#4A3D5C;
+  --good:#55C987; --bad:#F27560; --good-bg:#183324; --bad-bg:#3A1C17; color-scheme:dark;
+}}
+:root[data-theme="dark"]{
+  --bg:#141118; --surface:#1E1A24; --surface-2:#2A2432; --ink:#F2EEF6; --muted:#A99FB3; --line:#383040;
+  --accent:#F5B23A; --hi:#B892E6; --hi-ink:#1A1420; --bar:#B892E6; --bar-dim:#4A3D5C;
+  --good:#55C987; --bad:#F27560; --good-bg:#183324; --bad-bg:#3A1C17; color-scheme:dark;
+}
+*{box-sizing:border-box}
+html,button,a,label,input,select{touch-action:manipulation}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;-webkit-text-size-adjust:100%}
+.num{font-variant-numeric:tabular-nums}
+.wrap{max-width:720px;margin:0 auto;padding:12px 16px calc(32px + env(safe-area-inset-bottom))}
+header{display:flex;align-items:center;justify-content:space-between;gap:8px;padding-top:env(safe-area-inset-top)}
+header h1{font-size:18px;margin:8px 0}
+.eyebrow{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin:0}
+.btn{border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:10px;padding:8px 12px;font:inherit;font-size:14px;cursor:pointer}
+.btn:disabled{opacity:.4}
+.filters{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:8px 0 12px}
+.filters select,.filters input{font:inherit;font-size:15px;padding:8px 10px;border-radius:10px;border:1px solid var(--line);background:var(--surface);color:var(--ink);min-height:40px}
+.filters select{flex:1 1 140px}
+.datebox{display:flex;align-items:center;gap:4px;flex:1 1 220px}
+.datebox input{flex:1;min-width:0}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:14px;margin-bottom:12px}
+.card h2{font-size:13px;color:var(--muted);font-weight:600;margin:0 0 10px;text-transform:uppercase;letter-spacing:.05em}
+.hero .big{font-size:36px;font-weight:700;line-height:1.1}
+.delta{display:inline-block;font-size:13px;font-weight:600;padding:2px 8px;border-radius:999px;margin-top:6px}
+.delta.up{background:var(--good-bg);color:var(--good)} .delta.down{background:var(--bad-bg);color:var(--bad)} .delta.flat{background:var(--surface-2);color:var(--muted)}
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:14px}
+.stat{background:var(--surface-2);border-radius:10px;padding:10px}
+.stat b{display:block;font-size:18px} .stat span{font-size:12px;color:var(--muted)}
+.rows{display:grid;gap:6px}
+.row{display:flex;justify-content:space-between;gap:12px;align-items:baseline}
+.row .l{color:var(--ink)} .row .r{font-weight:600}
+.muted{color:var(--muted);font-size:13px}
+.meter{height:8px;border-radius:4px;background:var(--surface-2);overflow:hidden;margin:4px 0 10px}
+.meter i{display:block;height:100%;background:var(--accent);border-radius:4px}
+.chart{position:relative}
+.bars{display:flex;align-items:flex-end;gap:2px;height:150px;border-bottom:1px solid var(--line)}
+.bars button{flex:1;height:100%;display:flex;align-items:flex-end;background:none;border:0;padding:0;cursor:pointer;min-width:0}
+.bars button i{display:block;width:100%;background:var(--bar);border-radius:4px 4px 0 0;min-height:0}
+.bars button.zero i{background:transparent}
+.bars button[aria-pressed="true"] i{background:var(--accent)}
+.axis{display:flex;gap:2px;font-size:11px;color:var(--muted);margin-top:4px}
+.axis span{flex:1;text-align:center;min-width:0}
+.tip{font-size:13px;margin-top:8px;min-height:18px;color:var(--muted)}
+.tip b{color:var(--ink)}
+table{width:100%;border-collapse:collapse;font-size:14px}
+th,td{text-align:left;padding:8px 6px;border-bottom:1px solid var(--line)}
+th{font-size:12px;color:var(--muted);font-weight:600}
+td.r,th.r{text-align:right}
+details summary{cursor:pointer;color:var(--hi);font-size:14px;margin-top:8px}
+.signin{max-width:380px;margin:12vh auto 0}
+.field{display:grid;gap:6px;margin-bottom:12px}
+.field input{font:inherit;font-size:16px;padding:12px;border-radius:10px;border:1px solid var(--line);background:var(--surface);color:var(--ink)}
+.primary{width:100%;background:var(--hi);color:var(--hi-ink);border:0;border-radius:12px;padding:14px;font:inherit;font-weight:700;font-size:16px;cursor:pointer}
+.callout{background:var(--bad-bg);color:var(--bad);border-radius:10px;padding:10px;margin-bottom:12px;font-size:14px}
+.empty{color:var(--muted);text-align:center;padding:24px 0}
+.skel{opacity:.5}
+</style>
+</head>
+<body>
+<div class="wrap" id="app"></div>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<script>
+// Sago Loco HQ — live sales per store (roadmap B-01). Read-only: HQ sees every store,
+// a franchisee sees only their own stores (enforced by the database, not by this page).
+const SB_URL = 'https://fsdaiiazdnkmsqwyxrcj.supabase.co';
+const SB_KEY = 'sb_publishable_qv46qcVUERE-2ivDDbKKAA_eU7QZcS6';
+// own storage key, so signing in here never replaces a store tablet's login on the same phone
+const sb = supabase.createClient(SB_URL, SB_KEY, {auth:{storageKey:'slhq-auth', persistSession:true, autoRefreshToken:true}});
+
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const peso = n => '₱' + (Math.round(n*100)/100).toLocaleString('en-PH',{minimumFractionDigits:0,maximumFractionDigits:2});
+const pct = (a,b) => b ? Math.round(a/b*100) : 0;
+const SIZE = {R:'Regular', T:'Tall', G:'Grande'};
+const PAY = {cash:'Cash', gcash:'GCash', grab:'Grab', panda:'Foodpanda'};
+const phDate = (t=Date.now()) => new Date(t + 8*36e5).toISOString().slice(0,10);   // Manila calendar date
+const addDays = (d,n) => phDate(Date.parse(d+'T12:00:00+08:00') + n*864e5);
+const hourPH = iso => new Date(Date.parse(iso) + 8*36e5).getUTCHours();
+const fmtH = h => (h%12||12) + (h<12?'am':'pm');
+
+const V = {stores:[], menu:{}, store:'all', date:phDate(), data:null, prev:null, sel:null, role:null, updated:null, loading:false};
+let timer;
+
+// ---------- sign in ----------
+function renderSignin(msg){
+  $('app').innerHTML = `<div class="signin"><p class="eyebrow">Sago Loco</p><h1>HQ sign in</h1>
+    <p class="muted">For HQ and franchisees. Crew use the store tablet, not this page.</p>
+    <form id="f" class="card">
+      <div class="field"><label for="em">Email</label><input id="em" type="email" autocomplete="username" required></div>
+      <div class="field"><label for="pw">Password</label><input id="pw" type="password" autocomplete="current-password" required></div>
+      ${msg ? `<div class="callout">${esc(msg)}</div>` : ''}
+      <button class="primary" id="go">Sign in</button>
+    </form></div>`;
+  $('f').addEventListener('submit', async e => {
+    e.preventDefault(); $('go').disabled = true; $('go').textContent = 'Signing in…';
+    const {error} = await sb.auth.signInWithPassword({email:$('em').value.trim(), password:$('pw').value});
+    if(error){ renderSignin('Wrong email or password.'); return }
+    start();
+  });
+}
+
+async function start(){
+  const {data:{user}} = await sb.auth.getUser();
+  if(!user){ renderSignin(); return }
+  const prof = await sb.from('profiles').select('role').eq('user_id', user.id).maybeSingle();
+  if(prof.error || !prof.data || !['hq','franchisee'].includes(prof.data.role)){
+    await sb.auth.signOut(); renderSignin('This login is for a store tablet, not HQ. Use your own HQ or franchisee login.'); return;
+  }
+  V.role = prof.data.role;
+  const [st, menu] = await Promise.all([
+    sb.from('stores').select('id,name').order('name'),
+    sb.from('menu_items').select('id,name')
+  ]);
+  if(st.error || menu.error){ renderShell(); $('body').innerHTML = `<div class="callout">Couldn’t load stores. Check the internet and pull to refresh.</div>`; return }
+  V.stores = st.data; menu.data.forEach(m => V.menu[m.id] = m.name);
+  renderShell(); load();
+  clearInterval(timer); timer = setInterval(()=>{ if(V.date===phDate() && !document.hidden) load(true) }, 60000);
+}
+
+// ---------- data ----------
+async function fetchDay(date, cols){
+  const from = date+'T00:00:00+08:00', to = addDays(date,1)+'T00:00:00+08:00', out = [];
+  for(let i=0;;i+=1000){
+    let q = sb.from('sales').select(cols).gte('created_at', from).lt('created_at', to).order('created_at').range(i, i+999);
+    if(V.store!=='all') q = q.eq('store_id', V.store);
+    const r = await q; if(r.error) throw r.error;
+    out.push(...r.data); if(r.data.length < 1000) return out;
+  }
+}
+async function load(quiet){
+  if(V.loading) return; V.loading = true;
+  if(!quiet) $('body').classList.add('skel');
+  try{
+    const [day, prev] = await Promise.all([
+      fetchDay(V.date, 'id,store_id,pay,total,discount,created_at,voided_at,sale_lines(menu_item_id,size,qty,toppings,net)'),
+      fetchDay(addDays(V.date,-7), 'total,voided_at')
+    ]);
+    V.data = day; V.prev = prev; V.updated = Date.now(); renderBody();
+  }catch(e){
+    if(!quiet) $('body').innerHTML = `<div class="callout">Couldn’t load sales. Check the internet and try again.</div>`;
+  }finally{ V.loading = false; $('body').classList.remove('skel') }
+}
+
+function crunch(sales){
+  const ok = sales.filter(s => !s.voided_at), voids = sales.length - ok.length;
+  const net = ok.reduce((a,s)=>a+Number(s.total),0), disc = ok.reduce((a,s)=>a+Number(s.discount),0);
+  const pay = {}, hours = Array(24).fill(0), hourN = Array(24).fill(0), items = {}, stores = {};
+  let cups = 0, grande = 0, tops = 0, withTop = 0;
+  ok.forEach(s => {
+    pay[s.pay] = (pay[s.pay]||0) + Number(s.total);
+    const h = hourPH(s.created_at); hours[h] += Number(s.total); hourN[h]++;
+    const st = stores[s.store_id] = stores[s.store_id] || {net:0,n:0}; st.net += Number(s.total); st.n++;
+    (s.sale_lines||[]).forEach(l => {
+      cups += l.qty; if(l.size==='G') grande += l.qty;
+      const tn = (l.toppings||[]).length; tops += tn*l.qty; if(tn) withTop += l.qty;
+      const k = l.menu_item_id; const it = items[k] = items[k] || {q:0, net:0, R:0, T:0, G:0};
+      it.q += l.qty; it.net += Number(l.net); it[l.size] += l.qty;
+    });
+  });
+  return {n:ok.length, voids, net, disc, avg: ok.length ? net/ok.length : 0, pay, hours, hourN, items, stores, cups, grande, tops, withTop};
+}
+
+// ---------- screens ----------
+function renderShell(){
+  const opts = V.stores.length > 1 ? `<option value="all">All stores</option>` : '';
+  $('app').innerHTML = `<header><div><p class="eyebrow">Sago Loco HQ</p><h1>Sales</h1></div>
+      <button class="btn" id="out">Sign out</button></header>
+    <div class="filters">
+      <select id="store" aria-label="Store">${opts}${V.stores.map(s=>`<option value="${s.id}">${esc(s.name)}</option>`).join('')}</select>
+      <div class="datebox"><button class="btn" id="dprev" aria-label="Previous day">‹</button>
+        <input type="date" id="date" value="${V.date}" max="${phDate()}" aria-label="Date">
+        <button class="btn" id="dnext" aria-label="Next day">›</button></div>
+    </div>
+    <div id="body"><p class="empty">Loading sales…</p></div>`;
+  if(V.stores.length <= 1 && V.stores[0]) V.store = V.stores[0].id;
+  $('store').value = V.store;
+  $('store').onchange = e => { V.store = e.target.value; V.sel = null; load() };
+  $('date').onchange = e => { if(e.target.value){ V.date = e.target.value; V.sel = null; syncDate(); load() } };
+  $('dprev').onclick = () => { V.date = addDays(V.date,-1); V.sel = null; syncDate(); load() };
+  $('dnext').onclick = () => { if(V.date < phDate()){ V.date = addDays(V.date,1); V.sel = null; syncDate(); load() } };
+  $('out').onclick = async () => { clearInterval(timer); await sb.auth.signOut(); renderSignin() };
+  syncDate();
+}
+function syncDate(){ $('date').value = V.date; $('dnext').disabled = V.date >= phDate() }
+
+function renderBody(){
+  const m = crunch(V.data), p = crunch(V.prev), today = V.date === phDate();
+  const dayName = new Date(V.date+'T12:00:00+08:00').toLocaleDateString('en-PH',{weekday:'long', month:'short', day:'numeric'});
+  let delta = '';
+  if(p.net > 0){ const d = Math.round((m.net - p.net)/p.net*100);
+    delta = `<span class="delta ${d>0?'up':d<0?'down':'flat'}">${d>0?'▲':d<0?'▼':'•'} ${Math.abs(d)}% vs last ${new Date(V.date+'T12:00:00+08:00').toLocaleDateString('en-PH',{weekday:'short'})} (${peso(p.net)})</span>` }
+  else if(m.net > 0) delta = `<span class="delta flat">No sales last week to compare</span>`;
+
+  const payRows = Object.keys(PAY).filter(k=>m.pay[k]).map(k=>`<div class="row"><span class="l">${PAY[k]}</span><span class="r num">${peso(m.pay[k])} <span class="muted">· ${pct(m.pay[k],m.net)}%</span></span></div>`).join('');
+
+  // hourly: show store hours that had sales, padded to at least 9am–9pm
+  const hrs = m.hours.map((v,h)=>v>0?h:null).filter(h=>h!==null);
+  const h0 = Math.min(9, ...hrs), h1 = Math.max(21, ...hrs), max = Math.max(...m.hours.slice(h0,h1+1), 1);
+  const bars = []; const axis = [];
+  for(let h=h0; h<=h1; h++){
+    const v = m.hours[h], ht = v ? Math.max(4, v/max*100) : 0;
+    bars.push(`<button data-h="${h}" class="${v?'':'zero'}" aria-pressed="${V.sel===h}" aria-label="${fmtH(h)}: ${peso(v)}, ${m.hourN[h]} sales"><i style="height:${ht}%"></i></button>`);
+    axis.push(`<span>${(h-h0)%3===0 ? fmtH(h) : ''}</span>`);
+  }
+  const best = m.hours.indexOf(Math.max(...m.hours));
+  const tip = V.sel!=null ? `<b>${fmtH(V.sel)}–${fmtH((V.sel+1)%24)}</b> · ${peso(m.hours[V.sel])} · ${m.hourN[V.sel]} sale${m.hourN[V.sel]===1?'':'s'}`
+    : (m.net ? `Busiest: <b>${fmtH(best)}–${fmtH((best+1)%24)}</b> · ${peso(m.hours[best])}. Tap a bar for details.` : '');
+
+  const items = Object.entries(m.items).sort((a,b)=>b[1].q-a[1].q || b[1].net-a[1].net);
+  const itemRow = ([id,it]) => `<tr><td>${esc(V.menu[id]||id)}<div class="muted">${['R','T','G'].filter(s=>it[s]).map(s=>SIZE[s]+' '+it[s]).join(' · ')}</div></td><td class="r num">${it.q}</td><td class="r num">${peso(it.net)}</td></tr>`;
+  const storeRows = V.store==='all' && V.stores.length > 1 ? V.stores.map(s=>{ const x = m.stores[s.id]||{net:0,n:0};
+    return `<tr><td>${esc(s.name)}</td><td class="r num">${x.n}</td><td class="r num">${peso(x.net)}</td></tr>` }).join('') : '';
+
+  if(!V.data.length){
+    $('body').innerHTML = `<div class="card"><p class="eyebrow">${esc(dayName)}</p><p class="empty">No sales ${today?'yet today':'on this day'}.</p>${delta}</div>`;
+    return;
+  }
+  $('body').innerHTML = `
+    <div class="card hero"><p class="eyebrow">${esc(dayName)}${today?' · live':''}</p>
+      <div class="big num">${peso(m.net)}</div>${delta}
+      <div class="stats">
+        <div class="stat"><b class="num">${m.n}</b><span>Transactions</span></div>
+        <div class="stat"><b class="num">${peso(m.avg)}</b><span>Avg ticket</span></div>
+        <div class="stat"><b class="num">${m.cups}</b><span>Cups sold</span></div>
+      </div>
+      <p class="muted" style="margin:10px 0 0">${m.disc?`Discounts ${peso(m.disc)} · `:''}${m.voids?`${m.voids} voided (not counted)`:'No voids'}${today&&V.updated?` · Updated ${new Date(V.updated).toLocaleTimeString('en-PH',{hour:'numeric',minute:'2-digit'})}`:''}</p>
+    </div>
+    <div class="card"><h2>How they paid</h2><div class="rows">${payRows}</div></div>
+    <div class="card"><h2>Upsells</h2>
+      <div class="row"><span class="l">Grande cups</span><span class="r num">${m.grande} of ${m.cups} · ${pct(m.grande,m.cups)}%</span></div>
+      <div class="meter" role="img" aria-label="${pct(m.grande,m.cups)}% of cups were Grande"><i style="width:${pct(m.grande,m.cups)}%"></i></div>
+      <div class="row"><span class="l">Cups with toppings</span><span class="r num">${m.withTop} of ${m.cups} · ${pct(m.withTop,m.cups)}%</span></div>
+      <div class="meter" role="img" aria-label="${pct(m.withTop,m.cups)}% of cups had toppings"><i style="width:${pct(m.withTop,m.cups)}%"></i></div>
+      <div class="row"><span class="l">Toppings added</span><span class="r num">${m.tops}</span></div>
+    </div>
+    <div class="card"><h2>Sales by hour</h2>
+      <div class="chart"><div class="bars" id="bars">${bars.join('')}</div><div class="axis">${axis.join('')}</div></div>
+      <div class="tip" id="tip">${tip}</div>
+      <details><summary>Show as table</summary><table><thead><tr><th>Hour</th><th class="r">Sales</th><th class="r">Amount</th></tr></thead><tbody>
+        ${m.hours.map((v,h)=>v?`<tr><td>${fmtH(h)}–${fmtH((h+1)%24)}</td><td class="r num">${m.hourN[h]}</td><td class="r num">${peso(v)}</td></tr>`:'').join('')}</tbody></table></details>
+    </div>
+    <div class="card"><h2>Top drinks</h2>
+      <table><thead><tr><th>Drink</th><th class="r">Cups</th><th class="r">Sales</th></tr></thead><tbody>${items.slice(0,10).map(itemRow).join('')}</tbody></table>
+      ${items.length>10?`<details><summary>All ${items.length} drinks</summary><table><tbody>${items.slice(10).map(itemRow).join('')}</tbody></table></details>`:''}
+    </div>
+    ${storeRows?`<div class="card"><h2>By store</h2><table><thead><tr><th>Store</th><th class="r">Txns</th><th class="r">Sales</th></tr></thead><tbody>${storeRows}</tbody></table></div>`:''}`;
+  $('bars').onclick = e => { const b = e.target.closest('button'); if(!b) return; const h = +b.dataset.h; V.sel = V.sel===h ? null : h; renderBody() };
+}
+
+document.addEventListener('visibilitychange', ()=>{ if(!document.hidden && V.role && V.date===phDate()) load(true) });
+start().catch(()=>renderSignin('Couldn’t reach the server. Check the internet and try again.'));
+</script>
+</body>
+</html>
