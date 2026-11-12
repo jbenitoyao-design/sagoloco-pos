@@ -847,7 +847,7 @@ function renderClock(){
       <label class="charge" for="selfie" style="text-align:center">Open camera</label>
       <input type="file" id="selfie" accept="image/*" capture="user" hidden></div>`;
   showScreen(`<div class="panel"><div class="row"><h1>${c ? esc(c.name) : 'Time in / out'}</h1><button class="x" data-act="${c?'tback':'clockdone'}" aria-label="Back">×</button></div>
-    ${body}<p class="hint">Times use this tablet’s clock.</p>${demoPinHint()}</div>`);
+    ${body}<p class="hint">${MODE==='live' ? 'Times are confirmed by HQ’s server clock. Punches made without internet are marked for checking.' : 'Times use this tablet’s clock.'}</p>${demoPinHint()}</div>`);
 }
 function saveSelfie(file){
   if($('selfie')) $('selfie').value = '';   // so the same button works again right away
@@ -862,7 +862,8 @@ function saveSelfie(file){
     const ev = {id: uid(), crewId:tc.crew, type:tc.act, at:Date.now(), photo:cv.toDataURL('image/jpeg', .65)};
     S.time.push(ev); save();
     enqueue({op:'time', photo:ev.photo, path:S.storeId + '/' + new Date(ev.at).toLocaleDateString('en-CA') + '/' + ev.id + '.jpg',
-      row:{id:ev.id, store_id:S.storeId, crew_id:ev.crewId, type:ev.type, at:iso(ev.at), photo_path:null}});
+      // the database replaces this phone time with its own clock; offline punches are flagged for payroll (F-11)
+      row:{id:ev.id, store_id:S.storeId, crew_id:ev.crewId, type:ev.type, at:iso(ev.at), photo_path:null, offline:!navigator.onLine}});
     toast(crewName(ev.crewId) + ': ' + TC_LABEL[ev.type] + ' at ' + fmtTime(ev.at));
     tc = newPinState({act:null}); renderClock();
   };
