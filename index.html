@@ -510,8 +510,43 @@ async function adoptOpenShift(){
     return true;
   }catch(_){ return false }
 }
+// ---- forgotten shifts: a real shift is under 16 hours; older means it was never closed ----
+const STALE_MS = 16*3600e3;
+const isStale = sh => !!sh && Date.now() - sh.openedAt > STALE_MS;
+// ask before more sales land on a forgotten shift; never interrupt an order or another screen
+function maybeAskStale(force){
+  if(!isStale(S.shift) || UI.staleKept===S.shift.id) return false;
+  if(!force && (UI.cart.length || UI.pick || UI.pay || !$('screen').hidden || !$('ov').hidden)) return false;
+  renderStale(); return true;
+}
+function renderStale(){
+  const sh = S.shift, n = shiftSales(sh.id).filter(s=>!s.void).length;
+  const since = new Date(sh.openedAt).toLocaleString('en-PH', {weekday:'short', month:'short', day:'numeric', hour:'numeric', minute:'2-digit'});
+  showScreen(`<div class="panel"><div><h3 class="eyebrow">Sago Loco · ${esc(STORE.name)}</h3><h1>Close the old shift first?</h1></div>
+    <p>This shift has been open since <b>${esc(since)}</b>. Close it first?</p>
+    <p class="hint">${esc(crewName(sh.crewId))}’s shift · ${n} sale${n===1?'':'s'}. Closing means counting the cash in the drawer and printing the Z report. Then open a new shift for today.</p>
+    <button class="charge" data-act="staleclose">Yes, close it now</button>
+    <button class="btn" data-act="stalekeep" style="align-self:flex-start">No, keep using it</button></div>`);
+}
+// if HQ closed this tablet's shift (e.g. a forgotten test shift), follow the database instead of
+// ringing more sales onto a closed shift
+async function checkShiftClosedByHQ(){
+  if(MODE!=='live' || !sb || !navigator.onLine || !S.shift || UI.pay) return false;
+  if(S.outbox.some(o => (o.op==='shift' && o.row.id===S.shift.id) || (o.op==='close' && o.id===S.shift.id))) return false;
+  try{
+    const r = await sb.from('shifts').select('closed_at,counted_cash').eq('id', S.shift.id).maybeSingle();
+    if(r.error || !r.data || !r.data.closed_at || !S.shift) return false;
+    const sh = S.shift; sh.closedAt = Date.parse(r.data.closed_at); sh.counted = Number(r.data.counted_cash);
+    S.shifts.push(sh); S.shift = null; save();
+    if(!UI.pick){ closeOv(); closeScreen(); renderAll() }
+    toast('HQ closed the shift from ' + new Date(sh.openedAt).toLocaleDateString('en-PH',{month:'short', day:'numeric'}) + '. Open a new shift to keep selling.');
+    return true;
+  }catch(_){ return false }
+}
 async function openShift(cash){
-  if(await adoptOpenShift()){ closeScreen(); renderAll(); toast('Continuing ' + crewName(S.shift.crewId) + '’s open shift. Close it first to start a new one.'); return }
+  if(await adoptOpenShift()){ closeScreen(); renderAll();
+    if(!maybeAskStale(true)) toast('Continuing ' + crewName(S.shift.crewId) + '’s open shift. Close it first to start a new one.');
+    return }
   S.shift = {id: MODE==='live' ? uid() : 'sh'+Date.now(), crewId:openState.crew, openedAt:Date.now(), startCash:cash}; S.demo = false; save();
   enqueue({op:'shift', row:{id:S.shift.id, store_id:S.storeId, crew_id:S.shift.crewId, opened_at:iso(S.shift.openedAt), start_cash:cash, device_id:S.deviceId}});
   closeScreen(); renderAll(); toast('Shift opened · ' + peso(cash) + ' starting cash');
@@ -530,7 +565,7 @@ async function setupFromSession(){
     setMode('live');
     if(!(await refreshCatalog())){ renderSetup('Couldn’t load the menu. Check the internet and try again.'); return }
     await adoptOpenShift();
-    closeScreen(); renderAll(); sync();
+    closeScreen(); renderAll(); sync(); maybeAskStale(true);
   }catch(_){ renderSetup('Couldn’t reach the server. Check the internet and try again.') }
 }
 function renderSetup(msg){
@@ -548,7 +583,7 @@ function startDemo(){
   setMode('demo'); SERIES = SERIES_BASE.slice(); MENU = DEMO_MENU; TOPPINGS = DEMO_TOPPINGS; PROMOS = DEMO_PROMOS;
   STORE = {name:'Karuhatan', vat:false}; indexCatalog();
   S = loadKey(KEY_DEMO) || seed(); S.time = S.time || [];
-  closeScreen(); renderAll();
+  closeScreen(); renderAll(); maybeAskStale(true);
 }
 // keep the tablet light: synced records older than 2 days leave the device (the database keeps them)
 function prune(){
@@ -950,6 +985,8 @@ document.addEventListener('click', e=>{
       UI.voiding = null; toast('Sale #' + s.no + ' voided'); renderSales(); renderTop(); break }
     case 'close': closeOv(); if(S.shift){ if(UI.cart.length){ toast('Finish or clear the current order first'); return } renderClose('') } break;
     case 'closescreen': closeScreen(); break;
+    case 'staleclose': if(S.shift) renderClose(''); break;
+    case 'stalekeep': if(S.shift) UI.staleKept = S.shift.id; closeScreen(); break;
     case 'menu': renderMenu(); break;
     case 'clock': closeOv(); tc = newPinState({act:null}); renderClock(); break;
     case 'clockdone': closeScreen(); if(!S.shift) renderOpen(); break;
@@ -1004,7 +1041,7 @@ document.addEventListener('change', e=>{ if(e.target.id==='selfie' && e.target.f
 addEventListener('online', ()=>{ renderSync(); refreshCatalog(); sync() });
 addEventListener('offline', renderSync);
 setInterval(()=>{ sync() }, 20000);
-setInterval(()=>{ refreshCatalog(); cleanOldSelfies() }, 5*60000);
+setInterval(async ()=>{ refreshCatalog(); cleanOldSelfies(); if(!(await checkShiftClosedByHQ())) maybeAskStale() }, 5*60000);
 
 // ---- start: a set-up tablet opens straight to its store; otherwise HQ sets it up (or tries the demo) ----
 (async function boot(){
@@ -1014,7 +1051,9 @@ setInterval(()=>{ refreshCatalog(); cleanOldSelfies() }, 5*60000);
   if(live && live.storeId && mode==='live' && (session || !navigator.onLine)){
     MODE = 'live'; S = live; S.outbox = S.outbox||[]; S.failed = S.failed||[]; S.pinCache = S.pinCache||{}; S.time = S.time||[];
     if(S.catalog) applyLiveCatalog(S.catalog);
-    prune(); save(); renderAll(); refreshCatalog(); sync(); cleanOldSelfies(); return;
+    prune(); save(); renderAll(); refreshCatalog(); sync(); cleanOldSelfies();
+    if(!(await checkShiftClosedByHQ())) maybeAskStale(true);
+    return;
   }
   if(session){ await setupFromSession(); return }
   if(mode==='demo'){ startDemo(); return }
