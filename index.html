@@ -249,7 +249,7 @@ const SERIES_BASE = [
   {id:'kitkat', name:'KitKat',          c:'--s-kitkat'},
   {id:'cafe',   name:'Café Blends',     c:'--s-cafe'}
 ];
-// sizes = walk-in price, del = Grab / Foodpanda price (same on both apps in UTAK)
+// sizes = walk-in price, del = Grab price, panda = Foodpanda price (demo copies Grab into Foodpanda below)
 const DEMO_MENU = [
   {id:'gm-classic', s:'mango', n:'Golden Mango Classic',  sizes:{R:60,T:65,G:80},  del:{T:105,G:125}},
   {id:'gm-overload',s:'mango', n:'Golden Mango Overload', sizes:{R:80,T:85,G:100}, del:null},
@@ -272,6 +272,7 @@ const DEMO_MENU = [
   {id:'kk-oreo',    s:'kitkat',n:'KitKat Oreo Overload',  sizes:{T:125,G:115},     del:null},
   {id:'mocha',      s:'cafe',  n:'Café Mocha Smoothie',   sizes:{R:90,T:95,G:115}, del:{T:150,G:170}}
 ];
+DEMO_MENU.forEach(d => { if(!('panda' in d)) d.panda = d.del });
 const DEMO_TOPPINGS = [
   {id:'nata',n:'Nata de Coco',p:15},{id:'pearls',n:'Pearls',p:15},{id:'oreo',n:'Crushed Oreos',p:15},
   {id:'graham',n:'Crushed Graham',p:15},{id:'mallow',n:'Marshmallows',p:15},{id:'cheese',n:'Extra Cheese',p:20},{id:'chunks',n:'Mango Chunks',p:20}
@@ -300,7 +301,8 @@ function indexCatalog(){
 function applyLiveCatalog(cat){
   SERIES = SERIES_BASE.slice();
   const sid = name => { let s = SERIES.find(x=>x.name===name); if(!s){ s = {id:name, name, c:'--s-classic'}; SERIES.push(s) } return s.id };
-  MENU = cat.menu.filter(r=>r.active).sort((a,b)=>a.sort-b.sort).map(r=>({id:r.id, s:sid(r.series), n:r.name, sizes:r.sizes, del:r.delivery}));
+  MENU = cat.menu.filter(r=>r.active).sort((a,b)=>a.sort-b.sort).map(r=>({id:r.id, s:sid(r.series), n:r.name, sizes:r.sizes, del:r.delivery,
+    panda: r.panda !== undefined ? r.panda : r.delivery}));   // a menu saved before Foodpanda had its own prices uses the Grab price
   TOPPINGS = cat.toppings.filter(t=>t.active).map(t=>({id:t.id, n:t.name, p:+t.price}));
   PROMOS = cat.promos.filter(p=>p.active).map(p=>p.kind==='free' ? {id:p.id, n:p.name, free:true} : {id:p.id, n:p.name, pct:+p.pct});
   STORE = {name:cat.store.name, vat:!!cat.store.vat_registered};
@@ -319,9 +321,11 @@ const uid = () => (crypto.randomUUID ? crypto.randomUUID() : 'xxxxxxxx-xxxx-4xxx
 const iso = t => new Date(t).toISOString();
 const r2 = n => Math.round(n*100)/100;
 
+// each order source has its own price list; null = drink not sold there
+function chPrices(d, ch){ return ch==='walkin' ? d.sizes : ch==='grab' ? d.del : d.panda }
 function mkLine(drinkId,size,ch,tops,promo,qty){
   const d = byId[drinkId];
-  const base = ch==='walkin' ? d.sizes[size] : d.del[size];
+  const base = chPrices(d, ch)[size];
   return {drinkId,size,tops:tops||[],promo:promo||null,qty:qty||1,base,top:(tops||[]).reduce((a,t)=>a+topById[t].p,0)};
 }
 function seed(){
@@ -425,7 +429,7 @@ async function refreshCatalog(){
   try{
     const [st, menu, tops, promos, crew, last] = await Promise.all([
       sb.from('stores').select('id,name,vat_registered').eq('id', S.storeId).maybeSingle(),
-      sb.from('menu_items').select('id,series,name,sizes,delivery,sort,active'),
+      sb.from('menu_items').select('id,series,name,sizes,delivery,panda,sort,active'),
       sb.from('toppings').select('id,name,price,active'),
       sb.from('promos').select('id,name,kind,pct,active'),
       sb.from('crew').select('id,name,role,active').eq('store_id', S.storeId).eq('active', true).order('name'),
@@ -591,7 +595,7 @@ function renderChannels(){
   $('chSeg').innerHTML = CHANNELS.map(c=>`<button data-act="ch" data-id="${c.id}" aria-pressed="${UI.ch===c.id}">${c.n}</button>`).join('');
   $('cats').innerHTML = [{id:'all',name:'All drinks'}].concat(SERIES.filter(s=>MENU.some(d=>d.s===s.id))).map(s=>`<button data-act="cat" data-id="${esc(s.id)}" aria-pressed="${UI.cat===s.id}">${esc(s.name)}</button>`).join('');
 }
-function priceTable(d){ return UI.ch==='walkin' ? d.sizes : d.del }
+function priceTable(d){ return chPrices(d, UI.ch) }
 function renderGrid(){
   const list = MENU.filter(d => (UI.cat==='all'||d.s===UI.cat) && priceTable(d));
   $('grid').innerHTML = list.map(d=>{
