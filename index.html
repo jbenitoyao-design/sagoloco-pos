@@ -391,8 +391,49 @@ async function pushOp(op){
   }
   else if(op.op==='void') r = await sb.from('sales').update({voided_at:op.voided_at, void_reason:op.void_reason, voided_by:op.voided_by}).eq('id', op.id);
   else if(op.op==='close') r = await sb.from('shifts').update({closed_at:op.closed_at, counted_cash:op.counted_cash}).eq('id', op.id);
-  else if(op.op==='time') r = await sb.from('time_logs').upsert(op.row, {onConflict:'id', ignoreDuplicates:true});
+  else if(op.op==='time'){
+    const perr = await pushSelfie(op); if(perr) return perr;
+    r = await sb.from('time_logs').upsert(op.row, {onConflict:'id', ignoreDuplicates:true});
+  }
   return r && r.error ? r.error : null;
+}
+// selfie goes to private storage first, then the time record points at it.
+// The photo rides in the outbox only until it is uploaded, then leaves the tablet's queue.
+async function pushSelfie(op){
+  if(!op.photo || op.row.photo_path) return null;
+  const path = op.path || (op.row.store_id + '/' + new Date(op.row.at).toLocaleDateString('en-CA') + '/' + op.row.id + '.jpg');
+  const blob = await (await fetch(op.photo)).blob();
+  const up = await sb.storage.from('selfies').upload(path, blob, {contentType:'image/jpeg', upsert:false});
+  const st = up.error ? +(up.error.status || up.error.statusCode || 0) : 0;
+  const exists = up.error && (st===409 || /exist|duplicate/i.test(up.error.message||''));
+  if(up.error && !exists){
+    if(st >= 400 && st < 500){            // refused (not a network hiccup): keep the time, flag the photo for HQ
+      S.failed.push({op:'selfie', id:op.row.id, error:'Selfie not saved: ' + (up.error.message||st)});
+      delete op.photo; save(); return null;
+    }
+    return up.error;                       // offline or server busy: try again on the next sync
+  }
+  op.row.photo_path = path; delete op.photo; save();
+  return null;
+}
+// 90-day rule, no exceptions: once a day the tablet deletes its store's selfies older than 90 days.
+// The database only allows deleting photos past 90 days, so nothing newer can be removed by mistake.
+async function cleanOldSelfies(){
+  if(MODE!=='live' || !sb || !navigator.onLine || !S.storeId) return;
+  const today = new Date().toLocaleDateString('en-CA');
+  if(S.lastSelfieClean === today) return;
+  try{
+    const cut = new Date(Date.now() - 91*864e5).toLocaleDateString('en-CA');
+    const dirs = await sb.storage.from('selfies').list(S.storeId, {limit:1000});
+    if(dirs.error) return;
+    for(const d of dirs.data.filter(x => /^\d{4}-\d{2}-\d{2}$/.test(x.name) && x.name < cut)){
+      const files = await sb.storage.from('selfies').list(S.storeId + '/' + d.name, {limit:1000});
+      if(files.error || !files.data.length) continue;
+      const rm = await sb.storage.from('selfies').remove(files.data.map(f => S.storeId + '/' + d.name + '/' + f.name));
+      if(rm.error) return;
+    }
+    S.lastSelfieClean = today; save();
+  }catch(_){ /* try again tomorrow */ }
 }
 // a database refusal (bad data, not allowed) won't fix itself by retrying; a network or login hiccup will
 const isPermanent = e => /^(22|23|42|P0)/.test(String(e && e.code || ''));
@@ -809,15 +850,19 @@ function renderClock(){
     ${body}<p class="hint">Times use this tablet’s clock.</p>${demoPinHint()}</div>`);
 }
 function saveSelfie(file){
+  if($('selfie')) $('selfie').value = '';   // so the same button works again right away
+  // live camera only: a photo taken more than 3 minutes ago (e.g. picked from the gallery) is refused
+  if(file.lastModified && Date.now() - file.lastModified > 3*60000){ toast('Use the camera to take a new selfie now. Saved photos can’t be used.'); return }
   const img = new Image(), url = URL.createObjectURL(file);
   img.onload = ()=>{
-    const s = 240, cv = document.createElement('canvas'), k = Math.min(s/img.width, s/img.height, 1);
+    // 360 px is enough to recognise the face and the background; keeps each photo around 20 KB
+    const s = 360, cv = document.createElement('canvas'), k = Math.min(s/img.width, s/img.height, 1);
     cv.width = Math.round(img.width*k); cv.height = Math.round(img.height*k);
     cv.getContext('2d').drawImage(img, 0, 0, cv.width, cv.height); URL.revokeObjectURL(url);
-    const ev = {id: uid(), crewId:tc.crew, type:tc.act, at:Date.now(), photo:cv.toDataURL('image/jpeg', .7)};
+    const ev = {id: uid(), crewId:tc.crew, type:tc.act, at:Date.now(), photo:cv.toDataURL('image/jpeg', .65)};
     S.time.push(ev); save();
-    // selfie upload comes with photo storage (roadmap F-06); the time itself syncs now
-    enqueue({op:'time', row:{id:ev.id, store_id:S.storeId, crew_id:ev.crewId, type:ev.type, at:iso(ev.at), photo_path:null}});
+    enqueue({op:'time', photo:ev.photo, path:S.storeId + '/' + new Date(ev.at).toLocaleDateString('en-CA') + '/' + ev.id + '.jpg',
+      row:{id:ev.id, store_id:S.storeId, crew_id:ev.crewId, type:ev.type, at:iso(ev.at), photo_path:null}});
     toast(crewName(ev.crewId) + ': ' + TC_LABEL[ev.type] + ' at ' + fmtTime(ev.at));
     tc = newPinState({act:null}); renderClock();
   };
@@ -958,7 +1003,7 @@ document.addEventListener('change', e=>{ if(e.target.id==='selfie' && e.target.f
 addEventListener('online', ()=>{ renderSync(); refreshCatalog(); sync() });
 addEventListener('offline', renderSync);
 setInterval(()=>{ sync() }, 20000);
-setInterval(()=>{ refreshCatalog() }, 5*60000);
+setInterval(()=>{ refreshCatalog(); cleanOldSelfies() }, 5*60000);
 
 // ---- start: a set-up tablet opens straight to its store; otherwise HQ sets it up (or tries the demo) ----
 (async function boot(){
@@ -968,7 +1013,7 @@ setInterval(()=>{ refreshCatalog() }, 5*60000);
   if(live && live.storeId && mode==='live' && (session || !navigator.onLine)){
     MODE = 'live'; S = live; S.outbox = S.outbox||[]; S.failed = S.failed||[]; S.pinCache = S.pinCache||{}; S.time = S.time||[];
     if(S.catalog) applyLiveCatalog(S.catalog);
-    prune(); save(); renderAll(); refreshCatalog(); sync(); return;
+    prune(); save(); renderAll(); refreshCatalog(); sync(); cleanOldSelfies(); return;
   }
   if(session){ await setupFromSession(); return }
   if(mode==='demo'){ startDemo(); return }
