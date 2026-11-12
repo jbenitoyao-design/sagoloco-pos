@@ -332,7 +332,8 @@ function renderMenu(){
   const drinkRow = d => `<button class="item ${d.active?'':'off'}" data-edit="drink" data-id="${esc(d.id)}">
       <div><div class="nm">${esc(d.name)}${d.active?'':'<span class="tag">Hidden</span>'}</div>
       <div class="pr num">${priceTxt(d.sizes)}</div>
-      <div class="pr num">${d.delivery ? 'Grab/Panda: ' + priceTxt(d.delivery) : 'Not on delivery'}</div></div><span class="chev">›</span></button>`;
+      <div class="pr num">${d.delivery ? 'Grab: ' + priceTxt(d.delivery) : 'Not on Grab'}</div>
+      <div class="pr num">${d.panda ? 'Foodpanda: ' + priceTxt(d.panda) : 'Not on Foodpanda'}</div></div><span class="chev">›</span></button>`;
   $('view').innerHTML = `
     ${M.msg ? `<div class="okmsg">${esc(M.msg)}</div>` : ''}
     <p class="muted">Changes reach the store tablets within 5 minutes. Every change is logged with who made it.</p>
@@ -365,15 +366,17 @@ function drawEditor(){
   let body = '';
   if(kind==='drink'){
     const series = [...new Set(M.drinks.map(d=>d.series))];
-    const sz = (row && row.sizes) || {}, dl = (row && row.delivery) || {};
+    const sz = (row && row.sizes) || {}, dl = (row && row.delivery) || {}, pd = (row && row.panda) || {};
     const box = (pre, k, o) => `<div class="field"><label for="${pre}${k}">${SIZE[k]}</label><input id="${pre}${k}" class="num" inputmode="decimal" autocomplete="off" placeholder="—" value="${o[k]!=null?o[k]:''}"></div>`;
     body = `<div class="field"><label for="e_name">Drink name</label><input id="e_name" autocomplete="off" value="${esc(row?row.name:'')}"></div>
       <div class="field"><label for="e_series">Series</label><select id="e_series">${series.map(s=>`<option ${row&&row.series===s?'selected':''}>${esc(s)}</option>`).join('')}<option value="__new">+ New series…</option></select>
         <input id="e_newseries" placeholder="New series name" autocomplete="off" hidden></div>
       <div class="field"><b>Walk-in prices</b><small>Leave a size blank if this drink doesn’t come in that size.</small></div>
       <div class="grid3">${['R','T','G'].map(k=>box('w',k,sz)).join('')}</div>
-      <div class="field"><b>Grab / Foodpanda prices</b><small>Leave all blank if it isn’t sold on delivery apps.</small></div>
+      <div class="field"><b>Grab prices</b><small>Leave all blank if it isn’t sold on Grab.</small></div>
       <div class="grid3">${['R','T','G'].map(k=>box('d',k,dl)).join('')}</div>
+      <div class="field"><b>Foodpanda prices</b><small>Leave all blank if it isn’t sold on Foodpanda.</small></div>
+      <div class="grid3">${['R','T','G'].map(k=>box('p',k,pd)).join('')}</div>
       <label class="switch"><span>On the menu<br><small class="muted">Off = hidden from the tablets, past sales kept</small></span><input type="checkbox" id="e_active" ${!row||row.active?'checked':''}></label>`;
   } else if(kind==='topping'){
     body = `<div class="field"><label for="e_name">Topping name</label><input id="e_name" autocomplete="off" value="${esc(row?row.name:'')}"></div>
@@ -421,19 +424,24 @@ function checkEdit(){
   if(kind==='drink'){
     const series = f.e_series==='__new' ? (f.e_newseries||'').trim() : f.e_series;
     if(!series){ ED.err = 'Enter the new series name.'; drawEditor(); return }
-    const w = {}, d = {};
-    for(const k of ['R','T','G']){ const a = num(f['w'+k]), b = num(f['d'+k]);
-      if(Number.isNaN(a) || Number.isNaN(b)){ ED.err = 'Prices must be numbers, like 85.'; drawEditor(); return }
-      if(a!=null) w[k] = a; if(b!=null) d[k] = b }
+    const w = {}, d = {}, p = {};
+    for(const k of ['R','T','G']){ const a = num(f['w'+k]), b = num(f['d'+k]), c = num(f['p'+k]);
+      if(Number.isNaN(a) || Number.isNaN(b) || Number.isNaN(c)){ ED.err = 'Prices must be numbers, like 85.'; drawEditor(); return }
+      if(a!=null) w[k] = a; if(b!=null) d[k] = b; if(c!=null) p[k] = c }
     if(!Object.keys(w).length){ ED.err = 'Enter at least one walk-in price.'; drawEditor(); return }
-    data.series = series; data.sizes = w; data.delivery = Object.keys(d).length ? d : null;
+    data.series = series; data.sizes = w;
+    data.delivery = Object.keys(d).length ? d : null;   // "delivery" column = Grab prices
+    data.panda = Object.keys(p).length ? p : null;
+    const was = (o, k) => o && o[k]!=null ? o[k] : null, pz = v => v!=null ? peso(v) : 'none';
     if(row){
       if(row.series!==series) lines.push(`Series: ${row.series} → ${series}`);
       for(const k of ['R','T','G']){
-        const o = row.sizes[k], n = w[k]; if(o!=n) lines.push(`Walk-in ${SIZE[k]}: ${o!=null?peso(o):'none'} → ${n!=null?peso(n):'none'}`);
-        const od = row.delivery ? row.delivery[k] : null, nd = d[k]; if(od!=nd) lines.push(`Grab/Panda ${SIZE[k]}: ${od!=null?peso(od):'none'} → ${nd!=null?peso(nd):'none'}`);
+        const o = row.sizes[k], n = w[k]; if(o!=n) lines.push(`Walk-in ${SIZE[k]}: ${pz(o)} → ${pz(n)}`);
+        const og = was(row.delivery, k), ng = was(d, k); if(og!=ng) lines.push(`Grab ${SIZE[k]}: ${pz(og)} → ${pz(ng)}`);
+        const op = was(row.panda, k), np = was(p, k); if(op!=np) lines.push(`Foodpanda ${SIZE[k]}: ${pz(op)} → ${pz(np)}`);
       }
-    } else { lines.push(`${name} (${series})`, 'Walk-in: ' + priceTxt(w), data.delivery ? 'Grab/Panda: ' + priceTxt(d) : 'Not on delivery');
+    } else { lines.push(`${name} (${series})`, 'Walk-in: ' + priceTxt(w),
+        data.delivery ? 'Grab: ' + priceTxt(d) : 'Not on Grab', data.panda ? 'Foodpanda: ' + priceTxt(p) : 'Not on Foodpanda');
       data.sort = Math.max(0, ...M.drinks.map(x=>x.sort)) + 1 }
   } else if(kind==='topping'){
     const p = num(f.e_price); if(p==null || Number.isNaN(p)){ ED.err = 'Enter the price, like 15.'; drawEditor(); return }
