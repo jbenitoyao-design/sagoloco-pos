@@ -168,6 +168,22 @@ async function start(){
   V.stores = st.data; menu.data.forEach(m => V.menu[m.id] = m.name);
   renderShell();
   clearInterval(timer); timer = setInterval(()=>{ if(V.tab==='sales' && V.date===phDate() && !document.hidden) load(true) }, 60000);
+  cleanOldSelfies();
+}
+// 90-day rule, no exceptions: a backup to each store tablet's own daily clean-up, so photos still
+// leave even if a store stops opening its POS. The database refuses to delete anything newer.
+async function cleanOldSelfies(){
+  try{
+    const cut = new Date(Date.now() - 91*864e5).toLocaleDateString('en-CA');
+    for(const s of V.stores){
+      const dirs = await sb.storage.from('selfies').list(s.id, {limit:1000});
+      if(dirs.error) continue;
+      for(const d of dirs.data.filter(x => /^\d{4}-\d{2}-\d{2}$/.test(x.name) && x.name < cut)){
+        const files = await sb.storage.from('selfies').list(s.id + '/' + d.name, {limit:1000});
+        if(!files.error && files.data.length) await sb.storage.from('selfies').remove(files.data.map(f => s.id + '/' + d.name + '/' + f.name));
+      }
+    }
+  }catch(_){ /* tries again next time HQ opens */ }
 }
 
 // ---------- data ----------
