@@ -555,6 +555,7 @@ const M = {drinks:[], toppings:[], promos:[], msg:''};
 const LOCKED_PROMO = 'scpwd';   // Senior/PWD 20% is set by law
 const slug = s => s.toLowerCase().normalize('NFD').replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'').slice(0,40) || 'item';
 const newId = (name, list) => { let b = slug(name), id = b, i = 2; while(list.some(x=>x.id===id)) id = b + '-' + i++; return id };
+const promoDesc = x => x.kind==='free' ? 'Free drink (toppings still paid)' : x.kind==='amount' ? peso(+x.amount)+' off each cup' : (+x.pct)+'% off';
 const priceTxt = o => o ? ['R','T','G'].filter(k=>o[k]!=null).map(k=>k+' '+peso(o[k])).join(' · ') : '';
 
 async function showMenu(){
@@ -578,7 +579,8 @@ function renderMenu(){
       <div class="pr num">${d.panda ? 'Foodpanda: ' + priceTxt(d.panda) : 'Not on Foodpanda'}</div></div><span class="chev">›</span></button>`;
   $('view').innerHTML = `
     ${M.msg ? `<div class="okmsg">${esc(M.msg)}</div>` : ''}
-    <p class="muted">Changes reach the store tablets within 5 minutes. Every change is logged with who made it.</p>
+    <div class="filters"><p class="muted" style="margin:0;flex:1 1 300px">Changes reach the store tablets within 5 minutes. Every change is logged with who made it.</p>
+      <button class="btn" id="xl_down">⬇ Download menu (Excel)</button><button class="btn" id="xl_tpl">⬇ Blank template</button><button class="btn" id="xl_up">⬆ Upload from Excel</button></div>
     <div class="cols"><div>
     <div class="sec"><h2>Drinks</h2><button class="btn" data-edit="drink" data-id="">+ Add drink</button></div>
     <div class="list">${series.map(sr=>`<div class="grp">${esc(sr)}</div>${M.drinks.filter(d=>d.series===sr).map(drinkRow).join('')}`).join('')}</div>
@@ -589,10 +591,13 @@ function renderMenu(){
     <div class="sec"><h2>Promos & discounts</h2><button class="btn" data-edit="promo" data-id="">+ Add promo</button></div>
     <div class="list">${M.promos.map(p=>`<button class="item ${p.active?'':'off'}" data-edit="promo" data-id="${esc(p.id)}">
       <div><div class="nm">${esc(p.name)}${p.active?'':'<span class="tag">Hidden</span>'}${p.id===LOCKED_PROMO?'<span class="tag">Set by law</span>':''}</div>
-      <div class="pr">${p.kind==='free'?'Free drink (toppings still paid)':(+p.pct)+'% off'}</div></div><span class="chev">›</span></button>`).join('')}</div>
+      <div class="pr">${esc(promoDesc(p))}</div></div><span class="chev">›</span></button>`).join('')}</div>
     </div></div>`;
   M.msg = '';
   document.querySelectorAll('[data-edit]').forEach(b => b.onclick = () => openEditor(b.dataset.edit, b.dataset.id));
+  const dl = (id, blank) => { const b = $(id); b.onclick = async () => { const t = b.textContent; b.disabled = true; b.textContent = 'Preparing…';
+    try{ await downloadMenu(blank) }catch(_){ alert('Couldn’t make the Excel file. Check the internet and try again.') } b.disabled = false; b.textContent = t } };
+  dl('xl_down', false); dl('xl_tpl', true); $('xl_up').onclick = openMenuUpload;
 }
 
 // ---- editor sheet ----
@@ -631,8 +636,9 @@ function drawEditor(){
     const locked = row && row.id===LOCKED_PROMO;
     body = locked ? `<div class="callout">Senior Citizen and PWD discounts are set by law (20%, plus VAT removal for VAT stores). This one can’t be changed or hidden.</div>`
       : `<div class="field"><label for="e_name">Promo name</label><input id="e_name" autocomplete="off" value="${esc(row?row.name:'')}"></div>
-      <div class="field"><label for="e_kind">Type</label><select id="e_kind"><option value="free" ${row&&row.kind==='free'?'selected':''}>Free drink (toppings still paid)</option><option value="pct" ${row&&row.kind==='pct'?'selected':''}>Percent off</option></select></div>
+      <div class="field"><label for="e_kind">Type</label><select id="e_kind"><option value="free" ${row&&row.kind==='free'?'selected':''}>Free drink (toppings still paid)</option><option value="pct" ${row&&row.kind==='pct'?'selected':''}>Percent off</option><option value="amount" ${row&&row.kind==='amount'?'selected':''}>Peso off (₱)</option></select></div>
       <div class="field" id="pctbox" ${row&&row.kind==='pct'?'':'hidden'}><label for="e_pct">Percent off</label><input id="e_pct" class="num" inputmode="decimal" autocomplete="off" value="${row&&row.pct!=null?+row.pct:''}"></div>
+      <div class="field" id="amtbox" ${row&&row.kind==='amount'?'':'hidden'}><label for="e_amt">Peso off each cup</label><input id="e_amt" class="num" inputmode="decimal" autocomplete="off" placeholder="e.g. 10" value="${row&&row.amount!=null?+row.amount:''}"><small>Taken off each cup it’s used on (drink + toppings). A cup never goes below ₱0.</small></div>
       <label class="switch"><span>Available at the counter</span><input type="checkbox" id="e_active" ${!row||row.active?'checked':''}></label>`;
   }
   const review = ED.review ? `<div class="review"><b>${isNew?'Add this?':'Confirm these changes'}</b><ul>${ED.review.lines.map(l=>`<li>${esc(l)}</li>`).join('')}</ul></div>` : '';
@@ -648,7 +654,7 @@ function drawEditor(){
   if(keep) restoreForm(keep);
   $('e_x').onclick = closeEditor;
   if($('e_series')) $('e_series').onchange = e => { $('e_newseries').hidden = e.target.value!=='__new'; if(!$('e_newseries').hidden) $('e_newseries').focus() };
-  if($('e_kind')) $('e_kind').onchange = e => { $('pctbox').hidden = e.target.value!=='pct' };
+  if($('e_kind')) $('e_kind').onchange = e => { $('pctbox').hidden = e.target.value!=='pct'; $('amtbox').hidden = e.target.value!=='amount' };
   if($('e_check')) $('e_check').onclick = checkEdit;
   if($('e_back')) $('e_back').onclick = () => { ED.form = readForm(); ED.review = null; drawEditor() };
   if($('e_save')) $('e_save').onclick = saveEdit;
@@ -657,7 +663,7 @@ function drawEditor(){
 function readForm(){ const o = {}; document.querySelectorAll('#sheet input, #sheet select').forEach(i => o[i.id] = i.type==='checkbox' ? i.checked : i.value); return o }
 function restoreForm(o){ Object.entries(o).forEach(([k,v]) => { const i = $(k); if(!i) return; if(i.type==='checkbox') i.checked = v; else i.value = v });
   if($('e_series')) $('e_newseries').hidden = $('e_series').value!=='__new';
-  if($('e_kind')) $('pctbox').hidden = $('e_kind').value!=='pct' }
+  if($('e_kind')){ $('pctbox').hidden = $('e_kind').value!=='pct'; $('amtbox').hidden = $('e_kind').value!=='amount' } }
 
 function checkEdit(){
   const f = readForm(); ED.form = f; ED.err = '';
@@ -693,9 +699,10 @@ function checkEdit(){
     data.price = p;
     if(row){ if(+row.price!==p) lines.push(`Price: ${peso(+row.price)} → ${peso(p)}`) } else lines.push(`${name} · ${peso(p)}`);
   } else {
-    data.kind = f.e_kind; data.pct = null;
+    data.kind = f.e_kind; data.pct = null; data.amount = null;
     if(data.kind==='pct'){ const p = num(f.e_pct); if(p==null || Number.isNaN(p) || p<=0 || p>100){ ED.err = 'Percent must be between 1 and 100.'; drawEditor(); return } data.pct = p }
-    const desc = x => x.kind==='free' ? 'Free drink' : (+x.pct)+'% off';
+    if(data.kind==='amount'){ const a = num(f.e_amt); if(a==null || Number.isNaN(a) || a<=0){ ED.err = 'Enter the peso amount, like 10.'; drawEditor(); return } data.amount = a }
+    const desc = promoDesc;
     if(row){ if(desc(row)!==desc(data)) lines.push(`Type: ${desc(row)} → ${desc(data)}`) } else lines.push(`${name} · ${desc(data)}`);
   }
   if(row && row.active!==data.active) lines.push(data.active ? 'Put back on the menu' : 'Hide from the tablets');
@@ -716,6 +723,180 @@ async function saveEdit(){
   }
   M.msg = (row ? 'Saved: ' : 'Added: ') + data.name + '. Tablets update within 5 minutes.';
   closeEditor(); showMenu();
+}
+
+// ---------- menu in Excel (B-14): download, blank template, upload → review → publish ----------
+// One row per drink (UTAK needs one row per size per app). The Code column ties a row to an existing item,
+// so renames work; a blank Code means "new". Items missing from the file are left as they are.
+const XL_SIZES = [['R','Regular'],['T','Tall'],['G','Grande']];
+const XL_DRINK_COLS = ['Code','Series','Drink', ...['Walk-in','Grab','Foodpanda'].flatMap(c => XL_SIZES.map(([,n]) => c+' '+n)), 'On menu'];
+const XL_HOWTO = [
+  ['Sago Loco menu: how to use this file'],
+  [''],
+  ['1. Drinks: one row per drink. Type the price for each size it comes in; leave a size blank if it isn’t sold.'],
+  ['2. Grab and Foodpanda: leave all three blank if the drink isn’t sold on that app.'],
+  ['3. On menu: Yes or No. No hides it from the store tablets (past sales are kept).'],
+  ['4. Code: leave it as it is. For a NEW drink, topping or promo, leave Code blank.'],
+  ['5. To rename an item, change its name and keep its Code.'],
+  ['6. Items you delete from this file are NOT removed from the menu. To remove one, set On menu to No.'],
+  ['7. Promos: Type is “Free drink”, “Percent off” or “Peso off”. Percent is for Percent off (1 to 100); Amount is for Peso off (e.g. 10 = ₱10 off each cup).'],
+  ['8. Senior / PWD 20% is set by law and can’t be changed here.'],
+  ['9. Save the file, then in HQ → Menu & prices press “Upload”. You’ll see every change before anything is published.'],
+];
+const yes = v => !/^(no|n|false|0|off|hidden|hide)$/i.test(String(v ?? '').trim());
+function menuSheets(blank){
+  const d = blank ? [] : M.drinks.slice().sort((a,b)=>a.sort-b.sort);
+  const drinks = d.map(x => { const r = {'Code':x.id, 'Series':x.series, 'Drink':x.name};
+    [['Walk-in',x.sizes],['Grab',x.delivery],['Foodpanda',x.panda]].forEach(([c,o]) => XL_SIZES.forEach(([k,n]) => r[c+' '+n] = o && o[k]!=null ? Number(o[k]) : ''));
+    r['On menu'] = x.active ? 'Yes' : 'No'; return r });
+  const tops = (blank ? [] : M.toppings).map(t => ({'Code':t.id, 'Topping':t.name, 'Price':Number(t.price), 'On menu':t.active?'Yes':'No'}));
+  const promos = (blank ? [] : M.promos).map(p => ({'Code':p.id, 'Promo':p.name, 'Type':p.kind==='free'?'Free drink':p.kind==='amount'?'Peso off':'Percent off', 'Percent':p.kind==='pct'?Number(p.pct):'', 'Amount':p.kind==='amount'?Number(p.amount):'', 'On menu':p.active?'Yes':'No'}));
+  return {drinks, tops, promos};
+}
+async function downloadMenu(blank){
+  await loadXLSX();
+  const s = menuSheets(blank), wb = XLSX.utils.book_new();
+  const add = (rows, header, name, widths) => { const ws = XLSX.utils.json_to_sheet(rows, {header}); ws['!cols'] = widths.map(w=>({wch:w})); XLSX.utils.book_append_sheet(wb, ws, name) };
+  add(s.drinks, XL_DRINK_COLS, 'Drinks', [14,18,28, ...Array(9).fill(11), 9]);
+  add(s.tops, ['Code','Topping','Price','On menu'], 'Toppings', [14,24,9,9]);
+  add(s.promos, ['Code','Promo','Type','Percent','Amount','On menu'], 'Promos', [14,24,13,9,9,9]);
+  const how = XLSX.utils.aoa_to_sheet(XL_HOWTO); how['!cols'] = [{wch:110}]; XLSX.utils.book_append_sheet(wb, how, 'How to');
+  XLSX.writeFile(wb, blank ? 'SagoLoco_Menu_Template.xlsx' : `SagoLoco_Menu_${phDate()}.xlsx`);
+}
+
+// read a price cell: blank → null, "₱85" / "85.00" → 85, anything else → NaN
+function xlPrice(v){ if(v==null) return null; const s = String(v).replace(/[₱,\s]/g,'').replace(/^php/i,''); if(s==='') return null; const n = Number(s); return isFinite(n) && n >= 0 ? Math.round(n*100)/100 : NaN }
+// find a sheet by name, ignoring case and spaces
+function xlSheet(wb, name){ const k = wb.SheetNames.find(n => n.replace(/\s/g,'').toLowerCase()===name.toLowerCase()); return k ? XLSX.utils.sheet_to_json(wb.Sheets[k], {defval:'', raw:true}) : null }
+const xlGet = (row, col) => { const k = Object.keys(row).find(c => c.replace(/\s+/g,' ').trim().toLowerCase()===col.toLowerCase()); return k==null ? '' : row[k] };
+const sameObj = (a,b) => JSON.stringify(a||null)===JSON.stringify(b||null);
+
+// compare the file with the live menu → {errors, changes, writes}
+function planMenuUpload(wb){
+  const errors = [], changes = {drinks:[], toppings:[], promos:[]}, writes = {menu_items:[], toppings:[], promos:[]};
+  const drinksIn = xlSheet(wb,'Drinks'), topsIn = xlSheet(wb,'Toppings'), promosIn = xlSheet(wb,'Promos');
+  if(!drinksIn && !topsIn && !promosIn){ errors.push('This file has no “Drinks”, “Toppings” or “Promos” sheet. Start from “Download menu” or “Blank template”.'); return {errors, changes, writes} }
+  const pz = v => v!=null ? peso(v) : 'none', idsTaken = new Set(M.drinks.map(d=>d.id));
+  let nextSort = Math.max(0, ...M.drinks.map(x=>x.sort)) + 1;
+
+  const seen = new Set();
+  (drinksIn||[]).forEach((r, i) => {
+    const row = i + 2, code = String(xlGet(r,'Code')).trim(), name = String(xlGet(r,'Drink')).trim(), series = String(xlGet(r,'Series')).trim();
+    if(!code && !name && !series && XL_DRINK_COLS.slice(3,12).every(c => String(xlGet(r,c)).trim()==='')) return;   // empty row
+    const where = `Drinks row ${row}${name?` (${name})`:''}`;
+    if(!name){ errors.push(`${where}: the Drink name is empty.`); return }
+    if(!series){ errors.push(`${where}: the Series is empty (e.g. Golden Mango).`); return }
+    const key = name.toLowerCase(); if(seen.has(key)){ errors.push(`${where}: “${name}” is in the file twice.`); return } seen.add(key);
+    const prices = {}; let bad = false;
+    for(const [c,col] of [['w','Walk-in'],['d','Grab'],['p','Foodpanda']]){ prices[c] = {};
+      for(const [k,n] of XL_SIZES){ const v = xlPrice(xlGet(r, col+' '+n)); if(Number.isNaN(v)){ errors.push(`${where}: “${col} ${n}” must be a number like 85.`); bad = true } else if(v!=null) prices[c][k] = v } }
+    if(bad) return;
+    if(!Object.keys(prices.w).length){ errors.push(`${where}: needs at least one Walk-in price.`); return }
+    const data = {name, series, sizes: prices.w, delivery: Object.keys(prices.d).length ? prices.d : null, panda: Object.keys(prices.p).length ? prices.p : null, active: yes(xlGet(r,'On menu'))};
+    const old = code ? M.drinks.find(d => d.id===code) : M.drinks.find(d => d.name.toLowerCase()===key);
+    if(code && !old){ errors.push(`${where}: Code “${code}” isn’t on the menu. For a new drink, leave Code blank.`); return }
+    if(!old){
+      const id = newId(name, [...idsTaken].map(id=>({id}))); idsTaken.add(id);
+      writes.menu_items.push(Object.assign({id, sort: nextSort++, updated_at: new Date().toISOString()}, data));
+      changes.drinks.push(`New: ${name} (${series}) · ${priceTxt(data.sizes)}${data.active?'':' · hidden'}`); return;
+    }
+    const lines = [];
+    if(old.name!==name) lines.push(`name → ${name}`);
+    if(old.series!==series) lines.push(`series ${old.series} → ${series}`);
+    for(const [k,n] of XL_SIZES){
+      const pairs = [['Walk-in', old.sizes, data.sizes], ['Grab', old.delivery, data.delivery], ['Foodpanda', old.panda, data.panda]];
+      pairs.forEach(([c,o,nw]) => { const a = o && o[k]!=null ? Number(o[k]) : null, b = nw && nw[k]!=null ? nw[k] : null; if(a!==b) lines.push(`${c} ${n} ${pz(a)} → ${pz(b)}`) });
+    }
+    if(old.active!==data.active) lines.push(data.active ? 'back on the menu' : 'hidden from the tablets');
+    if(lines.length){ writes.menu_items.push(Object.assign({id: old.id, sort: old.sort, updated_at: new Date().toISOString()}, data)); changes.drinks.push(`${old.name}: ${lines.join(' · ')}`) }
+  });
+
+  const seenT = new Set();
+  (topsIn||[]).forEach((r, i) => {
+    const row = i + 2, code = String(xlGet(r,'Code')).trim(), name = String(xlGet(r,'Topping')).trim(), price = xlPrice(xlGet(r,'Price'));
+    if(!code && !name && price==null) return;
+    const where = `Toppings row ${row}${name?` (${name})`:''}`;
+    if(!name){ errors.push(`${where}: the Topping name is empty.`); return }
+    if(price==null || Number.isNaN(price)){ errors.push(`${where}: Price must be a number like 15.`); return }
+    if(seenT.has(name.toLowerCase())){ errors.push(`${where}: “${name}” is in the file twice.`); return } seenT.add(name.toLowerCase());
+    const data = {name, price, active: yes(xlGet(r,'On menu'))};
+    const old = code ? M.toppings.find(t => t.id===code) : M.toppings.find(t => t.name.toLowerCase()===name.toLowerCase());
+    if(code && !old){ errors.push(`${where}: Code “${code}” isn’t on the menu. For a new topping, leave Code blank.`); return }
+    if(!old){ const id = newId(name, M.toppings.concat(writes.toppings)); writes.toppings.push(Object.assign({id}, data)); changes.toppings.push(`New: ${name} · ${peso(price)}`); return }
+    const lines = [];
+    if(old.name!==name) lines.push(`name → ${name}`);
+    if(Number(old.price)!==price) lines.push(`${peso(Number(old.price))} → ${peso(price)}`);
+    if(old.active!==data.active) lines.push(data.active ? 'back on the menu' : 'hidden');
+    if(lines.length){ writes.toppings.push(Object.assign({id: old.id}, data)); changes.toppings.push(`${old.name}: ${lines.join(' · ')}`) }
+  });
+
+  const seenP = new Set();
+  (promosIn||[]).forEach((r, i) => {
+    const row = i + 2, code = String(xlGet(r,'Code')).trim(), name = String(xlGet(r,'Promo')).trim(), type = String(xlGet(r,'Type')).trim().toLowerCase();
+    if(!code && !name && !type) return;
+    const where = `Promos row ${row}${name?` (${name})`:''}`;
+    if(code===LOCKED_PROMO) return;   // Senior/PWD is set by law; the row is ignored
+    if(!name){ errors.push(`${where}: the Promo name is empty.`); return }
+    const kind = /^free/.test(type) ? 'free' : /^(percent|%|pct)/.test(type) ? 'pct' : /^(peso|php|₱|amount|fixed)/.test(type) ? 'amount' : null;
+    if(!kind){ errors.push(`${where}: Type must be “Free drink”, “Percent off” or “Peso off”.`); return }
+    let pct = null, amount = null;
+    if(kind==='pct'){ pct = xlPrice(xlGet(r,'Percent')); if(pct==null || Number.isNaN(pct) || pct<=0 || pct>100){ errors.push(`${where}: Percent must be between 1 and 100.`); return } }
+    if(kind==='amount'){ amount = xlPrice(xlGet(r,'Amount')); if(amount==null || Number.isNaN(amount) || amount<=0){ errors.push(`${where}: Amount must be a peso amount like 10.`); return } }
+    if(seenP.has(name.toLowerCase())){ errors.push(`${where}: “${name}” is in the file twice.`); return } seenP.add(name.toLowerCase());
+    const data = {name, kind, pct, amount, active: yes(xlGet(r,'On menu'))}, desc = promoDesc;
+    const old = code ? M.promos.find(p => p.id===code) : M.promos.find(p => p.name.toLowerCase()===name.toLowerCase());
+    if(old && old.id===LOCKED_PROMO) return;
+    if(code && !old){ errors.push(`${where}: Code “${code}” isn’t on the menu. For a new promo, leave Code blank.`); return }
+    if(!old){ const id = newId(name, M.promos.concat(writes.promos)); writes.promos.push(Object.assign({id}, data)); changes.promos.push(`New: ${name} · ${desc(data)}`); return }
+    const lines = [];
+    if(old.name!==name) lines.push(`name → ${name}`);
+    if(desc(old)!==desc(data)) lines.push(`${desc(old)} → ${desc(data)}`);
+    if(old.active!==data.active) lines.push(data.active ? 'available again' : 'hidden');
+    if(lines.length){ writes.promos.push(Object.assign({id: old.id}, data)); changes.promos.push(`${old.name}: ${lines.join(' · ')}`) }
+  });
+  return {errors, changes, writes};
+}
+
+function openMenuUpload(){
+  openSheet('Upload menu from Excel', `<p>Choose an Excel file made from <b>Download menu</b> or <b>Blank template</b>. Nothing changes until you review and confirm.</p>
+    <div class="field"><input type="file" id="u_file" accept=".xlsx,.xls,.csv"></div><div id="u_out"></div>`);
+  $('u_file').onchange = async e => {
+    const f = e.target.files[0]; if(!f) return; sheetErr(''); $('u_out').innerHTML = '<p class="muted">Reading the file…</p>';
+    try{
+      await loadXLSX();
+      const wb = XLSX.read(await f.arrayBuffer(), {type:'array'});
+      // a single-sheet CSV is read as the Drinks sheet
+      if(/\.csv$/i.test(f.name) && wb.SheetNames.length===1){ wb.Sheets['Drinks'] = wb.Sheets[wb.SheetNames[0]]; wb.SheetNames = ['Drinks'] }
+      showMenuPlan(planMenuUpload(wb));
+    }catch(err){ $('u_out').innerHTML = ''; sheetErr(err && err.message==='excel' ? 'Couldn’t load the Excel reader. Check the internet and try again.' : 'Couldn’t read this file. Save it as an Excel workbook (.xlsx) and try again.') }
+  };
+}
+function showMenuPlan(plan){
+  const {errors, changes, writes} = plan, n = changes.drinks.length + changes.toppings.length + changes.promos.length;
+  const list = (title, items) => items.length ? `<h3>${title} (${items.length})</h3><ul>${items.map(x=>`<li>${esc(x)}</li>`).join('')}</ul>` : '';
+  if(errors.length){
+    $('u_out').innerHTML = `<div class="callout"><b>Fix ${errors.length===1?'this':'these '+errors.length+' things'} in the file, then upload it again. Nothing was changed.</b><ul>${errors.slice(0,30).map(x=>`<li>${esc(x)}</li>`).join('')}</ul>${errors.length>30?`<p>…and ${errors.length-30} more.</p>`:''}</div>`;
+    return;
+  }
+  if(!n){ $('u_out').innerHTML = `<div class="okmsg">The file matches the menu exactly. Nothing to change.</div>`; return }
+  $('u_out').innerHTML = `<div class="review"><b>${n} change${n===1?'':'s'} to publish</b>${list('Drinks', changes.drinks)}${list('Toppings', changes.toppings)}${list('Promos', changes.promos)}
+      <p class="muted">Items not in the file stay as they are.</p></div>
+    <div class="btnrow"><button class="btn" id="u_cancel">Cancel</button><button class="primary" id="u_go">Confirm & publish</button></div>`;
+  $('u_cancel').onclick = closeEditor;
+  busy($('u_go'), 'Publishing…', async () => {
+    const done = [];
+    for(const [table, rows] of Object.entries(writes)){
+      if(!rows.length) continue;
+      const r = await sb.from(table).upsert(rows).select('id');
+      if(r.error || !r.data || r.data.length !== rows.length){
+        const net = r.error && /fetch|network/i.test(r.error.message||'');
+        throw new Error((done.length ? `Saved ${done.join(' and ')}, but ` : '') + (net ? 'the internet dropped before ' + table.replace('menu_items','drinks') + ' were saved. Upload the same file again; finished changes will simply show as “no change”.' : 'Couldn’t save ' + table.replace('menu_items','drinks') + '. Only HQ logins can change the menu.'));
+      }
+      done.push(table.replace('menu_items','drinks'));
+    }
+    M.msg = `Published ${n} change${n===1?'':'s'} from Excel. Tablets update within 5 minutes.`;
+    closeEditor(); showMenu();
+  });
 }
 
 // ---------- stores & people (B-17) ----------

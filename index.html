@@ -304,7 +304,7 @@ function applyLiveCatalog(cat){
   MENU = cat.menu.filter(r=>r.active).sort((a,b)=>a.sort-b.sort).map(r=>({id:r.id, s:sid(r.series), n:r.name, sizes:r.sizes, del:r.delivery,
     panda: r.panda !== undefined ? r.panda : r.delivery}));   // a menu saved before Foodpanda had its own prices uses the Grab price
   TOPPINGS = cat.toppings.filter(t=>t.active).map(t=>({id:t.id, n:t.name, p:+t.price}));
-  PROMOS = cat.promos.filter(p=>p.active).map(p=>p.kind==='free' ? {id:p.id, n:p.name, free:true} : {id:p.id, n:p.name, pct:+p.pct});
+  PROMOS = cat.promos.filter(p=>p.active).map(p=>p.kind==='free' ? {id:p.id, n:p.name, free:true} : p.kind==='amount' ? {id:p.id, n:p.name, amt:+p.amount} : {id:p.id, n:p.name, pct:+p.pct});
   STORE = {name:cat.store.name, vat:!!cat.store.vat_registered};
   indexCatalog();
 }
@@ -360,6 +360,7 @@ function lineAmt(l){
   const p = l.promo && promoById[l.promo];
   if(p && p.free) disc = l.base * l.qty;           // free drink; toppings still paid
   // Senior/PWD: non-VAT store = 20% off; VAT store = remove 12% VAT first, then 20% off
+  else if(p && p.amt) disc = Math.min(gross, p.amt * l.qty);   // peso off each cup, never below ₱0 (B-22)
   else if(p && p.pct) disc = STORE.vat ? Math.round((gross - gross / 1.12 * (1 - p.pct/100)) * 100) / 100 : Math.round(gross * p.pct) / 100;
   return {gross, disc, net: gross - disc};
 }
@@ -472,7 +473,7 @@ async function refreshCatalog(){
       sb.from('stores').select('id,name,vat_registered').eq('id', S.storeId).maybeSingle(),
       sb.from('menu_items').select('id,series,name,sizes,delivery,panda,sort,active'),
       sb.from('toppings').select('id,name,price,active'),
-      sb.from('promos').select('id,name,kind,pct,active'),
+      sb.from('promos').select('id,name,kind,pct,amount,active'),
       sb.from('crew').select('id,name,role,active').eq('store_id', S.storeId).eq('active', true).order('name'),
       sb.from('sales').select('sale_no').eq('store_id', S.storeId).order('sale_no', {ascending:false}).limit(1)
     ]);
