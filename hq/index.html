@@ -29,23 +29,42 @@
 html,button,a,label,input,select{touch-action:manipulation}
 body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;-webkit-text-size-adjust:100%}
 .num{font-variant-numeric:tabular-nums}
-.wrap{max-width:720px;margin:0 auto;padding:12px 16px calc(32px + env(safe-area-inset-bottom))}
+.wrap{max-width:1240px;margin:0 auto;padding:16px 28px calc(32px + env(safe-area-inset-bottom))}
+@media (max-width:640px){ .wrap{padding:12px 16px calc(32px + env(safe-area-inset-bottom))} }
 header{display:flex;align-items:center;justify-content:space-between;gap:8px;padding-top:env(safe-area-inset-top)}
+/* laptop first: brand, tabs and sign-out on one line; on a phone the tabs drop below */
+header.bar{gap:20px;margin-bottom:8px} header.bar .tabs{flex:0 1 560px;margin:0 auto 0 0}
+@media (max-width:760px){ header.bar{flex-wrap:wrap;gap:8px} header.bar .tabs{order:3;flex:1 1 100%;margin:4px 0 8px} }
 header h1{font-size:18px;margin:8px 0}
 .eyebrow{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin:0}
 .btn{border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:10px;padding:8px 12px;font:inherit;font-size:14px;cursor:pointer}
 .btn:disabled{opacity:.4}
 .filters{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:8px 0 12px}
 .filters select,.filters input{font:inherit;font-size:15px;padding:8px 10px;border-radius:10px;border:1px solid var(--line);background:var(--surface);color:var(--ink);min-height:40px}
-.filters select{flex:1 1 140px}
-.datebox{display:flex;align-items:center;gap:4px;flex:1 1 220px}
+.filters select{flex:0 1 220px}
+.filters #dl{margin-left:auto}
+.seg{display:flex;background:var(--surface-2);border-radius:10px;padding:3px;gap:2px}
+.seg button{border:0;background:none;color:var(--muted);font:inherit;font-size:14px;font-weight:600;padding:7px 11px;border-radius:8px;cursor:pointer}
+.seg button[aria-pressed="true"]{background:var(--surface);color:var(--ink);box-shadow:0 1px 3px rgba(0,0,0,.12)}
+@media (max-width:640px){ .filters select{flex:1 1 100%} .seg{flex:1 1 100%} .seg button{flex:1;padding:7px 4px} .filters #dl{margin-left:0} }
+.datebox{display:flex;align-items:center;gap:6px;flex:0 1 auto;flex-wrap:wrap}
+@media (max-width:640px){ .datebox{flex:1 1 100%} }
 .datebox input{flex:1;min-width:0}
 .card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:14px;margin-bottom:12px}
 .card h2{font-size:13px;color:var(--muted);font-weight:600;margin:0 0 10px;text-transform:uppercase;letter-spacing:.05em}
-.hero .big{font-size:36px;font-weight:700;line-height:1.1}
+.hero .big{font-size:40px;font-weight:700;line-height:1.1}
+.heroline{display:flex;flex-wrap:wrap;gap:16px 32px;align-items:flex-end;justify-content:space-between}
+.heroline .stats{flex:1 1 420px;max-width:640px;margin-top:0}
+/* dashboard grid: 12 columns on a computer, one column on a phone */
+.grid{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:14px} .grid > .card{margin:0;min-width:0}
+.span12{grid-column:span 12} .span8{grid-column:span 8} .span4{grid-column:span 4}
+@media (max-width:900px){ .grid > *{grid-column:span 12 !important} }
+.tablewrap{overflow-x:auto}
+table.tx td{vertical-align:top} table.tx td.items{min-width:240px;font-size:13px} table.tx tr.off td{color:var(--muted)}
+@media (max-width:640px){ .heroline .stats{flex-basis:100%} .hero .big{font-size:34px} }
 .delta{display:inline-block;font-size:13px;font-weight:600;padding:2px 8px;border-radius:999px;margin-top:6px}
 .delta.up{background:var(--good-bg);color:var(--good)} .delta.down{background:var(--bad-bg);color:var(--bad)} .delta.flat{background:var(--surface-2);color:var(--muted)}
-.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:14px}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(96px,1fr));gap:8px;margin-top:14px;min-width:0}
 .stat{background:var(--surface-2);border-radius:10px;padding:10px}
 .stat b{display:block;font-size:18px} .stat span{font-size:12px;color:var(--muted)}
 .rows{display:grid;gap:6px}
@@ -55,13 +74,15 @@ header h1{font-size:18px;margin:8px 0}
 .meter{height:8px;border-radius:4px;background:var(--surface-2);overflow:hidden;margin:4px 0 10px}
 .meter i{display:block;height:100%;background:var(--accent);border-radius:4px}
 .chart{position:relative}
-.bars{display:flex;align-items:flex-end;gap:2px;height:150px;border-bottom:1px solid var(--line)}
+.bars{display:flex;align-items:flex-end;gap:2px;height:200px;border-bottom:1px solid var(--line)}
+@media (max-width:640px){ .bars{height:150px} }
+.bars button:hover i{background:var(--accent)}
 .bars button{flex:1;height:100%;display:flex;align-items:flex-end;background:none;border:0;padding:0;cursor:pointer;min-width:0}
 .bars button i{display:block;width:100%;background:var(--bar);border-radius:4px 4px 0 0;min-height:0}
 .bars button.zero i{background:transparent}
 .bars button[aria-pressed="true"] i{background:var(--accent)}
 .axis{display:flex;gap:2px;font-size:11px;color:var(--muted);margin-top:4px}
-.axis span{flex:1;text-align:center;min-width:0}
+.axis span{flex:1;text-align:center;min-width:0;white-space:nowrap;overflow:visible}
 .tip{font-size:13px;margin-top:8px;min-height:18px;color:var(--muted)}
 .tip b{color:var(--ink)}
 table{width:100%;border-collapse:collapse;font-size:14px}
@@ -107,7 +128,16 @@ details summary{cursor:pointer;color:var(--hi);font-size:14px;margin-top:8px}
 .review{background:var(--surface);border:1px solid var(--accent);border-radius:10px;padding:12px;margin-bottom:12px}
 .review ul{margin:6px 0 0;padding-left:18px}
 .okmsg{background:var(--good-bg);color:var(--good);border-radius:10px;padding:10px;margin-bottom:12px;font-size:14px}
-/* stores & people (B-17) */
+/* stores & people (B-17): list beside details on a computer */
+.split{display:grid;grid-template-columns:minmax(260px,360px) minmax(0,1fr);gap:20px;align-items:start}
+.split > aside{position:sticky;top:12px}
+.item[aria-current="true"]{background:var(--surface-2);box-shadow:inset 3px 0 0 var(--hi)}
+.detailgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px} .detailgrid > .card{margin:0}
+.detailgrid > .wide{grid-column:span 2}
+@media (max-width:1100px){ .detailgrid{grid-template-columns:1fr} .detailgrid > .wide{grid-column:auto} }
+/* menu: drinks beside toppings and promos on a computer */
+.cols{display:grid;grid-template-columns:minmax(0,3fr) minmax(0,2fr);gap:0 20px;align-items:start}
+@media (max-width:900px){ .cols{grid-template-columns:1fr} }
 .person{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;padding:10px 0;border-top:1px solid var(--line)}
 .card h2 + .person{border-top:0;padding-top:0}
 .person.offp b{color:var(--muted);text-decoration:line-through}
@@ -145,7 +175,8 @@ const addDays = (d,n) => phDate(Date.parse(d+'T12:00:00+08:00') + n*864e5);
 const hourPH = iso => new Date(Date.parse(iso) + 8*36e5).getUTCHours();
 const fmtH = h => (h%12||12) + (h<12?'am':'pm');
 
-const V = {tab:'sales', stores:[], menu:{}, store:'all', date:phDate(), data:null, prev:null, sel:null, role:null, updated:null, loading:false};
+const V = {tab:'sales', stores:[], menu:{}, crew:{}, toppings:{}, promos:{}, store:'all', period:'day', date:phDate(), from:phDate(), to:phDate(),
+  data:null, prev:null, sel:{}, txLimit:50, role:null, updated:null, loading:false};
 let timer;
 
 // ---------- sign in ----------
@@ -175,14 +206,18 @@ async function start(){
     await sb.auth.signOut(); renderSignin('This login is for a store tablet, not HQ. Use your own HQ or franchisee login.'); return;
   }
   V.role = prof.data.role;
-  const [st, menu] = await Promise.all([
+  const [st, menu, crew, tops, promos] = await Promise.all([
     sb.from('stores').select('id,name').order('name'),
-    sb.from('menu_items').select('id,name')
+    sb.from('menu_items').select('id,name'),
+    sb.from('crew').select('id,name'),          // names for the transactions list and downloads
+    sb.from('toppings').select('id,name'),
+    sb.from('promos').select('id,name')
   ]);
+  (crew.data||[]).forEach(c => V.crew[c.id] = c.name); (tops.data||[]).forEach(t => V.toppings[t.id] = t.name); (promos.data||[]).forEach(p => V.promos[p.id] = p.name);
   if(st.error || menu.error){ $('app').innerHTML = '<div class="wrap"><div id="body"></div></div>'; $('body').innerHTML = `<div class="callout">Couldn’t load stores. Check the internet and pull to refresh.</div>`; return }
   V.stores = st.data; menu.data.forEach(m => V.menu[m.id] = m.name);
   renderShell();
-  clearInterval(timer); timer = setInterval(()=>{ if(V.tab==='sales' && V.date===phDate() && !document.hidden) load(true) }, 60000);
+  clearInterval(timer); timer = setInterval(()=>{ if(V.tab==='sales' && V.R && V.R.live && !document.hidden) load(true) }, 60000);
   cleanOldSelfies();
 }
 // 90-day rule, no exceptions: a backup to each store tablet's own daily clean-up, so photos still
@@ -202,10 +237,43 @@ async function cleanOldSelfies(){
 }
 
 // ---------- data ----------
-async function fetchDay(date, cols){
-  const from = date+'T00:00:00+08:00', to = addDays(date,1)+'T00:00:00+08:00', out = [];
+// Sales for any period (B-19). Dates are Manila calendar dates as 'YYYY-MM-DD'; a range is [from, to).
+const SALE_COLS = 'id,store_id,sale_no,crew_id,channel,pay,gross,discount,total,tendered,change_due,created_at,voided_at,void_reason,' +
+  'sale_lines(menu_item_id,size,qty,base_price,toppings,toppings_price,promo_id,discount,net,sc_type)';
+const CH = {walkin:'Walk-in', grab:'Grab', panda:'Foodpanda'};
+const PERIODS = [['day','Day'],['week','Week'],['month','Month'],['year','Year'],['custom','Custom']];
+const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+const dow = d => new Date(d+'T00:00:00Z').getUTCDay();
+const daysBetween = (a,b) => Math.round((Date.parse(b+'T00:00:00Z') - Date.parse(a+'T00:00:00Z'))/864e5);
+const monday = d => addDays(d, -((dow(d)+6)%7));
+const addMonths = (ym, n) => { let [y,m] = ym.split('-').map(Number); m += n; while(m<1){m+=12;y--} while(m>12){m-=12;y++} return y+'-'+String(m).padStart(2,'0') };
+const fmtD = (d, o) => new Date(d+'T12:00:00+08:00').toLocaleDateString('en-PH', Object.assign({timeZone:'Asia/Manila'}, o||{month:'short', day:'numeric'}));
+const timePH = iso => new Date(iso).toLocaleTimeString('en-PH', {timeZone:'Asia/Manila', hour:'numeric', minute:'2-digit'});
+const dateOf = iso => phDate(Date.parse(iso));
+
+// the period on screen → its dates, a name for it, and what it is compared with
+function range(){
+  const d = V.date, today = phDate();
+  let from, to, label, prevFrom, prevTo, prevName;
+  if(V.period==='day'){ from = d; to = addDays(d,1); label = fmtD(d,{weekday:'long', month:'short', day:'numeric', year:'numeric'});
+    prevFrom = addDays(d,-7); prevTo = addDays(d,-6); prevName = 'last ' + fmtD(d,{weekday:'short'}) }
+  else if(V.period==='week'){ from = monday(d); to = addDays(from,7); label = fmtD(from) + ' – ' + fmtD(addDays(to,-1),{month:'short', day:'numeric', year:'numeric'});
+    prevFrom = addDays(from,-7); prevTo = from; prevName = 'the week before' }
+  else if(V.period==='month'){ const ym = d.slice(0,7); from = ym+'-01'; to = addMonths(ym,1)+'-01'; label = MONTHS[+ym.slice(5)-1] + ' ' + ym.slice(0,4);
+    prevFrom = addMonths(ym,-1)+'-01'; prevTo = from; prevName = MONTHS[+prevFrom.slice(5,7)-1] }
+  else if(V.period==='year'){ const y = +d.slice(0,4); from = y+'-01-01'; to = (y+1)+'-01-01'; label = String(y); prevFrom = (y-1)+'-01-01'; prevTo = from; prevName = String(y-1) }
+  else { from = V.from <= V.to ? V.from : V.to; const last = V.from <= V.to ? V.to : V.from; to = addDays(last,1);
+    label = from===last ? fmtD(from,{weekday:'long', month:'short', day:'numeric', year:'numeric'}) : fmtD(from,{month:'short', day:'numeric', year:'numeric'}) + ' – ' + fmtD(last,{month:'short', day:'numeric', year:'numeric'});
+    const n = daysBetween(from,to); prevFrom = addDays(from,-n); prevTo = from; prevName = n===1 ? 'the day before' : `the ${n} days before` }
+  // a period still running is compared with the same number of days of the one before
+  const live = from <= today && today < to, end = live ? addDays(today,1) : to;
+  if(live && V.period!=='day' && V.period!=='custom'){ const n = daysBetween(from,end); prevTo = addDays(prevFrom,n); prevName = (n>1 ? `the first ${n} days of ` : 'the first day of ') + prevName }
+  return {from, to:end, fullTo:to, label, prevFrom, prevTo, prevName, live, days: daysBetween(from,end), future: from > today};
+}
+async function fetchRange(from, to, cols){
+  const out = [];
   for(let i=0;;i+=1000){
-    let q = sb.from('sales').select(cols).gte('created_at', from).lt('created_at', to).order('created_at').range(i, i+999);
+    let q = sb.from('sales').select(cols).gte('created_at', from+'T00:00:00+08:00').lt('created_at', to+'T00:00:00+08:00').order('created_at').order('id').range(i, i+999);
     if(V.store!=='all') q = q.eq('store_id', V.store);
     const r = await q; if(r.error) throw r.error;
     out.push(...r.data); if(r.data.length < 1000) return out;
@@ -225,38 +293,44 @@ async function loadAlerts(){
       Sales keep landing on that old shift until it is closed. Ask the store to close it on the tablet: ⚙ Settings → Close shift.</div>`).join('');
   }catch(_){ /* the warning is a helper; sales still show without it */ }
 }
+let loadSeq = 0;
 async function load(quiet){
   loadAlerts();
-  if(V.loading) return; V.loading = true;
-  if(!quiet && $('body')) $('body').classList.add('skel');
+  const R = range(), seq = ++loadSeq;
+  V.R = R;
+  if(R.future){ V.data = []; V.prev = []; if($('body')) renderBody(); return }
+  if(!quiet && $('body')){ $('body').classList.add('skel'); if(!V.data) $('body').innerHTML = '<p class="empty">Loading sales…</p>' }
+  V.loading = true; syncDownload();
   try{
-    const [day, prev] = await Promise.all([
-      fetchDay(V.date, 'id,store_id,pay,total,discount,created_at,voided_at,sale_lines(menu_item_id,size,qty,toppings,net)'),
-      fetchDay(addDays(V.date,-7), 'total,voided_at')
-    ]);
-    V.data = day; V.prev = prev; V.updated = Date.now(); if(V.tab==='sales' && $('body')) renderBody();
+    const [cur, prev] = await Promise.all([fetchRange(R.from, R.to, SALE_COLS), fetchRange(R.prevFrom, R.prevTo, 'total,voided_at')]);
+    if(seq !== loadSeq) return;   // a newer choice replaced this one
+    V.data = cur; V.prev = prev; V.updated = Date.now(); if(V.tab==='sales' && $('body')) renderBody();
   }catch(e){
-    if(!quiet && $('body')) $('body').innerHTML = `<div class="callout">Couldn’t load sales. Check the internet and try again.</div>`;
-  }finally{ V.loading = false; if($('body')) $('body').classList.remove('skel') }
+    if(seq === loadSeq && !quiet && $('body')) $('body').innerHTML = `<div class="callout">Couldn’t load sales. Check the internet and try again.</div>`;
+  }finally{ if(seq === loadSeq){ V.loading = false; syncDownload(); if($('body')) $('body').classList.remove('skel') } }
 }
 
 function crunch(sales){
-  const ok = sales.filter(s => !s.voided_at), voids = sales.length - ok.length;
-  const net = ok.reduce((a,s)=>a+Number(s.total),0), disc = ok.reduce((a,s)=>a+Number(s.discount),0);
-  const pay = {}, hours = Array(24).fill(0), hourN = Array(24).fill(0), items = {}, stores = {};
+  const ok = sales.filter(s => !s.voided_at), voided = sales.filter(s => s.voided_at);
+  const net = ok.reduce((a,s)=>a+Number(s.total),0), disc = ok.reduce((a,s)=>a+Number(s.discount||0),0);
+  const pay = {}, hours = Array(24).fill(0), hourN = Array(24).fill(0), items = {}, stores = {}, days = {}, months = {};
   let cups = 0, grande = 0, tops = 0, withTop = 0;
   ok.forEach(s => {
-    pay[s.pay] = (pay[s.pay]||0) + Number(s.total);
-    const h = hourPH(s.created_at); hours[h] += Number(s.total); hourN[h]++;
-    const st = stores[s.store_id] = stores[s.store_id] || {net:0,n:0}; st.net += Number(s.total); st.n++;
+    const t = Number(s.total);
+    pay[s.pay] = (pay[s.pay]||0) + t;
+    const h = hourPH(s.created_at); hours[h] += t; hourN[h]++;
+    const d = dateOf(s.created_at), dd = days[d] = days[d] || {v:0,n:0}; dd.v += t; dd.n++;
+    const mm = months[d.slice(0,7)] = months[d.slice(0,7)] || {v:0,n:0}; mm.v += t; mm.n++;
+    const st = stores[s.store_id] = stores[s.store_id] || {net:0,n:0}; st.net += t; st.n++;
     (s.sale_lines||[]).forEach(l => {
       cups += l.qty; if(l.size==='G') grande += l.qty;
       const tn = (l.toppings||[]).length; tops += tn*l.qty; if(tn) withTop += l.qty;
-      const k = l.menu_item_id; const it = items[k] = items[k] || {q:0, net:0, R:0, T:0, G:0};
+      const it = items[l.menu_item_id] = items[l.menu_item_id] || {q:0, net:0, R:0, T:0, G:0};
       it.q += l.qty; it.net += Number(l.net); it[l.size] += l.qty;
     });
   });
-  return {n:ok.length, voids, net, disc, avg: ok.length ? net/ok.length : 0, pay, hours, hourN, items, stores, cups, grande, tops, withTop};
+  return {n:ok.length, voids:voided.length, voidAmt:voided.reduce((a,s)=>a+Number(s.total),0), net, disc, avg: ok.length ? net/ok.length : 0,
+    pay, hours, hourN, items, stores, days, months, cups, grande, tops, withTop};
 }
 
 // ---------- screens ----------
@@ -266,9 +340,9 @@ function renderShell(){
   const tabs = hq ? [['sales','Sales'],['menu','Menu & prices'],['stores','Stores & people']] : [['sales','Sales'],['stores','Crew']];
   if(!tabs.some(t=>t[0]===V.tab)) V.tab = 'sales';
   const title = (tabs.find(t=>t[0]===V.tab)||tabs[0])[1];
-  $('app').innerHTML = `<header><div><p class="eyebrow">Sago Loco HQ</p><h1>${esc(title)}</h1></div>
+  $('app').innerHTML = `<header class="bar"><div class="brand"><p class="eyebrow">Sago Loco HQ</p><h1>${esc(title)}</h1></div>
+      <div class="tabs" role="tablist">${tabs.map(([k,l])=>`<button role="tab" data-tab="${k}" aria-selected="${V.tab===k}">${esc(l)}</button>`).join('')}</div>
       <button class="btn" id="out">Sign out</button></header>
-    <div class="tabs" role="tablist">${tabs.map(([k,l])=>`<button role="tab" data-tab="${k}" aria-selected="${V.tab===k}">${esc(l)}</button>`).join('')}</div>
     <div id="view"></div>`;
   $('out').onclick = async () => { clearInterval(timer); await sb.auth.signOut(); renderSignin() };
   document.querySelectorAll('[data-tab]').forEach(b => b.onclick = () => { if(V.tab===b.dataset.tab && V.tab==='stores'){ P.sel = null } V.tab = b.dataset.tab; renderShell() });
@@ -278,84 +352,201 @@ function showSales(){
   const opts = V.stores.length > 1 ? `<option value="all">All stores</option>` : '';
   $('view').innerHTML = `<div class="filters">
       <select id="store" aria-label="Store">${opts}${V.stores.map(s=>`<option value="${s.id}">${esc(s.name)}</option>`).join('')}</select>
-      <div class="datebox"><button class="btn" id="dprev" aria-label="Previous day">‹</button>
-        <input type="date" id="date" value="${V.date}" max="${phDate()}" aria-label="Date">
-        <button class="btn" id="dnext" aria-label="Next day">›</button></div>
+      <div class="seg" role="group" aria-label="Period">${PERIODS.map(([k,l])=>`<button data-period="${k}" aria-pressed="${V.period===k}">${l}</button>`).join('')}</div>
+      <div class="datebox" id="datebox"></div>
+      <button class="btn" id="dl" title="Download these sales as Excel or CSV">⬇ Download</button>
     </div>
     <div id="alerts"></div>
     <div id="body"><p class="empty">Loading sales…</p></div>`;
   if(V.stores.length <= 1 && V.stores[0]) V.store = V.stores[0].id;
   $('store').value = V.store;
-  $('store').onchange = e => { V.store = e.target.value; V.sel = null; load() };
-  $('date').onchange = e => { if(e.target.value){ V.date = e.target.value; V.sel = null; syncDate(); load() } };
-  $('dprev').onclick = () => { V.date = addDays(V.date,-1); V.sel = null; syncDate(); load() };
-  $('dnext').onclick = () => { if(V.date < phDate()){ V.date = addDays(V.date,1); V.sel = null; syncDate(); load() } };
-  syncDate(); load();
+  $('store').onchange = e => { V.store = e.target.value; resetSel(); load() };
+  document.querySelectorAll('[data-period]').forEach(b => b.onclick = () => {
+    if(V.period === b.dataset.period) return;
+    const R = range(); V.period = b.dataset.period;
+    if(V.period==='custom'){ V.from = R.from; V.to = addDays(R.to,-1) } else if(V.date > phDate()) V.date = phDate();
+    document.querySelectorAll('[data-period]').forEach(x => x.setAttribute('aria-pressed', x.dataset.period===V.period));
+    resetSel(); drawDatebox(); load() });
+  $('dl').onclick = openDownload;
+  drawDatebox(); load();
 }
-function syncDate(){ $('date').value = V.date; $('dnext').disabled = V.date >= phDate() }
+function resetSel(){ V.sel = {}; V.txLimit = 50 }
+// the date controls change with the period: one date, a month, a year, or from–to
+function drawDatebox(){
+  const box = $('datebox'), today = phDate(), p = V.period;
+  if(p==='custom'){
+    box.innerHTML = `<label class="muted" for="dfrom">From</label><input type="date" id="dfrom" value="${V.from}" max="${today}">
+      <label class="muted" for="dto">to</label><input type="date" id="dto" value="${V.to}" max="${today}">`;
+    $('dfrom').onchange = e => { if(e.target.value){ V.from = e.target.value; resetSel(); load() } };
+    $('dto').onchange = e => { if(e.target.value){ V.to = e.target.value; resetSel(); load() } };
+    return;
+  }
+  const input = p==='month' ? `<input type="month" id="dpick" value="${V.date.slice(0,7)}" max="${today.slice(0,7)}" aria-label="Month">`
+    : p==='year' ? `<select id="dpick" aria-label="Year">${Array.from({length:Math.max(1, +today.slice(0,4)-2025)}, (_,i)=>+today.slice(0,4)-i).map(y=>`<option ${+V.date.slice(0,4)===y?'selected':''}>${y}</option>`).join('')}</select>`
+    : `<input type="date" id="dpick" value="${V.date}" max="${today}" aria-label="${p==='week'?'Any day in the week':'Date'}">`;
+  const isNow = range().live;
+  box.innerHTML = `<button class="btn" id="dprev" aria-label="Previous ${p}">‹</button>${input}<button class="btn" id="dnext" aria-label="Next ${p}" ${isNow?'disabled':''}>›</button>
+    ${isNow ? '' : `<button class="btn" id="dnow">${p==='day'?'Today':p==='week'?'This week':p==='month'?'This month':'This year'}</button>`}`;
+  const step = n => { V.date = p==='day' ? addDays(V.date,n) : p==='week' ? addDays(V.date,7*n) : p==='month' ? addMonths(V.date.slice(0,7),n)+'-01' : (+V.date.slice(0,4)+n)+'-01-01';
+    if(V.date > today) V.date = today; resetSel(); drawDatebox(); load() };
+  $('dprev').onclick = () => step(-1);
+  $('dnext').onclick = () => step(1);
+  if($('dnow')) $('dnow').onclick = () => { V.date = today; resetSel(); drawDatebox(); load() };
+  $('dpick').onchange = e => { const v = e.target.value; if(!v) return;
+    V.date = p==='month' ? v+'-01' : p==='year' ? v+'-01-01' : v; if(V.date > today) V.date = today; resetSel(); drawDatebox(); load() };
+}
+
+// bar chart: [{label, short, v, n}]; hover (computer) or tap (phone) shows the numbers
+function barChart(id, b, hint){
+  const max = Math.max(1, ...b.map(x=>x.v)), sel = V.sel[id], every = Math.max(1, Math.ceil(b.length / (innerWidth > 900 ? 16 : 8)));
+  const best = b.reduce((bi,x,i)=>x.v > b[bi].v ? i : bi, 0);
+  const tipFor = i => `<b>${esc(b[i].label)}</b> · ${peso(b[i].v)} · ${b[i].n} sale${b[i].n===1?'':'s'}`;
+  const tip = sel!=null && b[sel] ? tipFor(sel) : (b[best] && b[best].v ? `${hint}: ${tipFor(best)}. ${matchMedia('(hover:hover)').matches ? 'Point at' : 'Tap'} a bar for details.` : '');
+  return `<div class="chart"><div class="bars" data-chart="${id}">${b.map((x,i)=>`<button data-i="${i}" class="${x.v?'':'zero'}" aria-pressed="${sel===i}" aria-label="${esc(x.label)}: ${peso(x.v)}, ${x.n} sales"><i style="height:${x.v?Math.max(3,x.v/max*100):0}%"></i></button>`).join('')}</div>
+    <div class="axis">${b.map((x,i)=>`<span>${i%every===0?esc(x.short):''}</span>`).join('')}</div></div><div class="tip" id="tip-${id}">${tip}</div>`;
+}
+function bindCharts(charts){
+  document.querySelectorAll('[data-chart]').forEach(el => {
+    const id = el.dataset.chart, b = charts[id], tip = $('tip-'+id);
+    const show = i => { tip.innerHTML = `<b>${esc(b[i].label)}</b> · ${peso(b[i].v)} · ${b[i].n} sale${b[i].n===1?'':'s'}` };
+    el.onclick = e => { const x = e.target.closest('button'); if(!x) return; const i = +x.dataset.i; V.sel[id] = V.sel[id]===i ? null : i; renderBody() };
+    el.onmouseover = e => { const x = e.target.closest('button'); if(x) show(+x.dataset.i) };
+    el.onmouseleave = () => { const i = V.sel[id]; tip.innerHTML = i!=null ? `<b>${esc(b[i].label)}</b> · ${peso(b[i].v)} · ${b[i].n} sale${b[i].n===1?'':'s'}` : tip.dataset.idle || tip.innerHTML };
+    tip.dataset.idle = tip.innerHTML;
+  });
+}
+
+const storeName = id => (V.stores.find(s=>s.id===id)||{name:'—'}).name;
+const toppingName = id => V.toppings[id] || id;
+const lineText = l => `${l.qty>1?l.qty+'× ':''}${V.menu[l.menu_item_id]||l.menu_item_id} (${SIZE[l.size]||l.size})${(l.toppings||[]).length?' + '+l.toppings.map(toppingName).join(', '):''}${l.promo_id?' · '+(V.promos[l.promo_id]||l.promo_id):''}`;
 
 function renderBody(){
-  const m = crunch(V.data), p = crunch(V.prev), today = V.date === phDate();
-  const dayName = new Date(V.date+'T12:00:00+08:00').toLocaleDateString('en-PH',{weekday:'long', month:'short', day:'numeric'});
+  const R = V.R || range(), m = crunch(V.data||[]), p = crunch(V.prev||[]), multi = R.days > 1;
   let delta = '';
-  if(p.net > 0){ const d = Math.round((m.net - p.net)/p.net*100);
-    delta = `<span class="delta ${d>0?'up':d<0?'down':'flat'}">${d>0?'▲':d<0?'▼':'•'} ${Math.abs(d)}% vs last ${new Date(V.date+'T12:00:00+08:00').toLocaleDateString('en-PH',{weekday:'short'})} (${peso(p.net)})</span>` }
-  else if(m.net > 0) delta = `<span class="delta flat">No sales last week to compare</span>`;
-
+  if(R.future) delta = '';
+  else if(p.net > 0){ const d = Math.round((m.net - p.net)/p.net*100);
+    delta = `<span class="delta ${d>0?'up':d<0?'down':'flat'}">${d>0?'▲':d<0?'▼':'•'} ${Math.abs(d)}% vs ${esc(R.prevName)} (${peso(p.net)})</span>` }
+  else if(m.net > 0) delta = `<span class="delta flat">No sales in ${esc(R.prevName)} to compare</span>`;
+  const head = `<p class="eyebrow">${esc(R.label)}${R.live?' · live':''}</p>`;
+  if(R.future || !(V.data||[]).length){
+    $('body').innerHTML = `<div class="card">${head}<p class="empty">${R.future ? 'This period hasn’t started yet.' : R.live ? 'No sales yet.' : 'No sales in this period.'}</p>${delta}</div>`;
+    return;
+  }
   const payRows = Object.keys(PAY).filter(k=>m.pay[k]).map(k=>`<div class="row"><span class="l">${PAY[k]}</span><span class="r num">${peso(m.pay[k])} <span class="muted">· ${pct(m.pay[k],m.net)}%</span></span></div>`).join('');
 
-  // hourly: show store hours that had sales, padded to at least 9am–9pm
-  const hrs = m.hours.map((v,h)=>v>0?h:null).filter(h=>h!==null);
-  const h0 = Math.min(9, ...hrs), h1 = Math.max(21, ...hrs), max = Math.max(...m.hours.slice(h0,h1+1), 1);
-  const bars = []; const axis = [];
-  for(let h=h0; h<=h1; h++){
-    const v = m.hours[h], ht = v ? Math.max(4, v/max*100) : 0;
-    bars.push(`<button data-h="${h}" class="${v?'':'zero'}" aria-pressed="${V.sel===h}" aria-label="${fmtH(h)}: ${peso(v)}, ${m.hourN[h]} sales"><i style="height:${ht}%"></i></button>`);
-    axis.push(`<span>${(h-h0)%3===0 ? fmtH(h) : ''}</span>`);
+  // trend: by day (up to ~2 months) or by month; always: busiest hours
+  const charts = {};
+  if(multi){
+    if(R.days <= 62){ const b = []; for(let d=R.from; d<R.to; d=addDays(d,1)){ const x = m.days[d]||{v:0,n:0};
+        b.push({label: fmtD(d,{weekday:'short', month:'short', day:'numeric'}), short: R.days<=7 ? fmtD(d,{weekday:'short'}) : fmtD(d,{day:'numeric'}), v:x.v, n:x.n}) }
+      charts.trend = b }
+    else { const b = []; const lastYM = addDays(R.to,-1).slice(0,7); for(let ym=R.from.slice(0,7); ym<=lastYM; ym=addMonths(ym,1)){ const x = m.months[ym]||{v:0,n:0};
+        b.push({label: MONTHS[+ym.slice(5)-1]+' '+ym.slice(0,4), short: MONTHS[+ym.slice(5)-1].slice(0,3), v:x.v, n:x.n}) }
+      charts.trend = b }
   }
-  const best = m.hours.indexOf(Math.max(...m.hours));
-  const tip = V.sel!=null ? `<b>${fmtH(V.sel)}–${fmtH((V.sel+1)%24)}</b> · ${peso(m.hours[V.sel])} · ${m.hourN[V.sel]} sale${m.hourN[V.sel]===1?'':'s'}`
-    : (m.net ? `Busiest: <b>${fmtH(best)}–${fmtH((best+1)%24)}</b> · ${peso(m.hours[best])}. Tap a bar for details.` : '');
+  const hrs = m.hours.map((v,h)=>v>0?h:null).filter(h=>h!==null), h0 = Math.min(9, ...hrs), h1 = Math.max(21, ...hrs), hb = [];
+  for(let h=h0; h<=h1; h++) hb.push({label:`${fmtH(h)}–${fmtH((h+1)%24)}`, short: (h-h0)%3===0 ? fmtH(h) : '', v:m.hours[h], n:m.hourN[h]});
+  charts.hours = hb;
 
   const items = Object.entries(m.items).sort((a,b)=>b[1].q-a[1].q || b[1].net-a[1].net);
   const itemRow = ([id,it]) => `<tr><td>${esc(V.menu[id]||id)}<div class="muted">${['R','T','G'].filter(s=>it[s]).map(s=>SIZE[s]+' '+it[s]).join(' · ')}</div></td><td class="r num">${it.q}</td><td class="r num">${peso(it.net)}</td></tr>`;
   const storeRows = V.store==='all' && V.stores.length > 1 ? V.stores.map(s=>{ const x = m.stores[s.id]||{net:0,n:0};
-    return `<tr><td>${esc(s.name)}</td><td class="r num">${x.n}</td><td class="r num">${peso(x.net)}</td></tr>` }).join('') : '';
+    return `<tr><td>${esc(s.name)}</td><td class="r num">${x.n}</td><td class="r num">${peso(x.net)}</td><td class="r num muted">${pct(x.net,m.net)}%</td></tr>` }).join('') : '';
 
-  if(!V.data.length){
-    $('body').innerHTML = `<div class="card"><p class="eyebrow">${esc(dayName)}</p><p class="empty">No sales ${today?'yet today':'on this day'}.</p>${delta}</div>`;
-    return;
-  }
-  $('body').innerHTML = `
-    <div class="card hero"><p class="eyebrow">${esc(dayName)}${today?' · live':''}</p>
-      <div class="big num">${peso(m.net)}</div>${delta}
+  const tx = (V.data||[]).slice().reverse(), shown = tx.slice(0, V.txLimit), allStores = V.store==='all' && V.stores.length > 1;
+  const txRow = s => `<tr class="${s.voided_at?'off':''}"><td class="num">${multi?esc(fmtD(dateOf(s.created_at)))+' ':''}${esc(timePH(s.created_at))}</td>
+      ${allStores?`<td>${esc(storeName(s.store_id))}</td>`:''}<td class="num">#${s.sale_no}</td><td>${esc(V.crew[s.crew_id]||'—')}</td>
+      <td>${esc(CH[s.channel]||s.channel)}${s.pay!==s.channel?' · '+esc(PAY[s.pay]||s.pay):''}</td>
+      <td class="items">${(s.sale_lines||[]).map(l=>esc(lineText(l))).join('<br>')}</td>
+      <td class="r num">${peso(Number(s.total))}${s.voided_at?`<div><span class="tag warn">Voided</span></div><div class="muted">${esc(s.void_reason||'')}</div>`:''}</td></tr>`;
+
+  $('body').innerHTML = `<div class="grid">
+    <div class="card hero span12">${head}
+      <div class="heroline"><div><div class="big num">${peso(m.net)}</div>${delta}</div>
       <div class="stats">
-        <div class="stat"><b class="num">${m.n}</b><span>Transactions</span></div>
+        <div class="stat"><b class="num">${m.n.toLocaleString('en-PH')}</b><span>Transactions</span></div>
         <div class="stat"><b class="num">${peso(m.avg)}</b><span>Avg ticket</span></div>
-        <div class="stat"><b class="num">${m.cups}</b><span>Cups sold</span></div>
-      </div>
-      <p class="muted" style="margin:10px 0 0">${m.disc?`Discounts ${peso(m.disc)} · `:''}${m.voids?`${m.voids} voided (not counted)`:'No voids'}${today&&V.updated?` · Updated ${new Date(V.updated).toLocaleTimeString('en-PH',{hour:'numeric',minute:'2-digit'})}`:''}</p>
+        <div class="stat"><b class="num">${m.cups.toLocaleString('en-PH')}</b><span>Cups sold</span></div>
+        ${multi?`<div class="stat"><b class="num">${peso(m.net/Math.max(1,R.days))}</b><span>Per day</span></div>`:''}
+      </div></div>
+      <p class="muted" style="margin:10px 0 0">${m.disc?`Discounts ${peso(m.disc)} · `:''}${m.voids?`${m.voids} voided, ${peso(m.voidAmt)} (not counted)`:'No voids'}${R.live&&V.updated?` · Updated ${new Date(V.updated).toLocaleTimeString('en-PH',{hour:'numeric',minute:'2-digit'})}`:''}</p>
     </div>
-    <div class="card"><h2>How they paid</h2><div class="rows">${payRows}</div></div>
-    <div class="card"><h2>Upsells</h2>
+    ${multi ? `<div class="card span8"><h2>Sales by ${R.days<=62?'day':'month'}</h2>${barChart('trend', charts.trend, R.days<=62?'Best day':'Best month')}</div>`
+      : `<div class="card span8"><h2>Sales by hour</h2>${barChart('hours', charts.hours, 'Busiest')}</div>`}
+    <div class="card span4"><h2>How they paid</h2><div class="rows">${payRows}</div></div>
+    <div class="card span8"><h2>Top drinks</h2><div class="tablewrap">
+      <table><thead><tr><th>Drink</th><th class="r">Cups</th><th class="r">Sales</th></tr></thead><tbody>${items.slice(0,10).map(itemRow).join('')}</tbody></table>
+      ${items.length>10?`<details><summary>All ${items.length} drinks</summary><table><tbody>${items.slice(10).map(itemRow).join('')}</tbody></table></details>`:''}</div>
+    </div>
+    <div class="card span4"><h2>Upsells</h2>
       <div class="row"><span class="l">Grande cups</span><span class="r num">${m.grande} of ${m.cups} · ${pct(m.grande,m.cups)}%</span></div>
       <div class="meter" role="img" aria-label="${pct(m.grande,m.cups)}% of cups were Grande"><i style="width:${pct(m.grande,m.cups)}%"></i></div>
       <div class="row"><span class="l">Cups with toppings</span><span class="r num">${m.withTop} of ${m.cups} · ${pct(m.withTop,m.cups)}%</span></div>
       <div class="meter" role="img" aria-label="${pct(m.withTop,m.cups)}% of cups had toppings"><i style="width:${pct(m.withTop,m.cups)}%"></i></div>
       <div class="row"><span class="l">Toppings added</span><span class="r num">${m.tops}</span></div>
     </div>
-    <div class="card"><h2>Sales by hour</h2>
-      <div class="chart"><div class="bars" id="bars">${bars.join('')}</div><div class="axis">${axis.join('')}</div></div>
-      <div class="tip" id="tip">${tip}</div>
-      <details><summary>Show as table</summary><table><thead><tr><th>Hour</th><th class="r">Sales</th><th class="r">Amount</th></tr></thead><tbody>
-        ${m.hours.map((v,h)=>v?`<tr><td>${fmtH(h)}–${fmtH((h+1)%24)}</td><td class="r num">${m.hourN[h]}</td><td class="r num">${peso(v)}</td></tr>`:'').join('')}</tbody></table></details>
-    </div>
-    <div class="card"><h2>Top drinks</h2>
-      <table><thead><tr><th>Drink</th><th class="r">Cups</th><th class="r">Sales</th></tr></thead><tbody>${items.slice(0,10).map(itemRow).join('')}</tbody></table>
-      ${items.length>10?`<details><summary>All ${items.length} drinks</summary><table><tbody>${items.slice(10).map(itemRow).join('')}</tbody></table></details>`:''}
-    </div>
-    ${storeRows?`<div class="card"><h2>By store</h2><table><thead><tr><th>Store</th><th class="r">Txns</th><th class="r">Sales</th></tr></thead><tbody>${storeRows}</tbody></table></div>`:''}`;
-  $('bars').onclick = e => { const b = e.target.closest('button'); if(!b) return; const h = +b.dataset.h; V.sel = V.sel===h ? null : h; renderBody() };
+    ${multi ? `<div class="card span8"><h2>Busiest hours</h2>${barChart('hours', charts.hours, 'Busiest')}</div>` : ''}
+    ${storeRows ? `<div class="card span4"><h2>By store</h2><table><thead><tr><th>Store</th><th class="r">Txns</th><th class="r">Sales</th><th class="r">Share</th></tr></thead><tbody>${storeRows}</tbody></table></div>` : ''}
+    <div class="card span12" id="transactions"><div class="sec" style="margin:0 0 8px"><h2 style="margin:0">Transactions · ${tx.length.toLocaleString('en-PH')}</h2><span class="muted">Newest first</span></div>
+      <div class="tablewrap"><table class="tx"><thead><tr><th>${multi?'Date & time':'Time'}</th>${allStores?'<th>Store</th>':''}<th>Sale</th><th>Crew</th><th>Type</th><th>Items</th><th class="r">Total</th></tr></thead>
+        <tbody>${shown.map(txRow).join('')}</tbody></table></div>
+      ${tx.length > shown.length ? `<button class="btn" id="txmore" style="margin-top:10px">Show ${Math.min(100, tx.length-shown.length)} more</button>` : ''}
+    </div></div>`;
+  bindCharts(charts);
+  if($('txmore')) $('txmore').onclick = () => { V.txLimit += 100; renderBody() };
+}
+
+// ---------- download (B-20): what's on screen, as Excel (3 sheets) or CSV ----------
+function syncDownload(){ const b = $('dl'); if(b) b.disabled = !!V.loading || !(V.data||[]).length }
+function saleRows(){
+  const sales = V.data || [], tx = [], lines = [], sum = {};
+  sales.forEach(s => {
+    const d = dateOf(s.created_at), t = timePH(s.created_at), status = s.voided_at ? 'Voided' : 'Counted', ls = s.sale_lines || [];
+    tx.push({'Date':d, 'Time':t, 'Store':storeName(s.store_id), 'Sale #':s.sale_no, 'Crew':V.crew[s.crew_id]||'', 'Type':CH[s.channel]||s.channel, 'Paid by':PAY[s.pay]||s.pay,
+      'Items':ls.map(lineText).join('; '), 'Cups':ls.reduce((a,l)=>a+l.qty,0), 'Gross':Number(s.gross), 'Discount':Number(s.discount||0), 'Total':Number(s.total),
+      'Cash given':s.tendered!=null?Number(s.tendered):'', 'Change':s.change_due!=null?Number(s.change_due):'', 'Status':status, 'Void reason':s.void_reason||'',
+      'Voided at':s.voided_at ? dateOf(s.voided_at)+' '+timePH(s.voided_at) : ''});
+    ls.forEach(l => lines.push({'Date':d, 'Time':t, 'Store':storeName(s.store_id), 'Sale #':s.sale_no, 'Drink':V.menu[l.menu_item_id]||l.menu_item_id, 'Size':SIZE[l.size]||l.size,
+      'Qty':l.qty, 'Drink price':Number(l.base_price), 'Toppings':(l.toppings||[]).map(toppingName).join(', '), 'Toppings price':Number(l.toppings_price||0),
+      'Promo':l.promo_id ? (V.promos[l.promo_id]||l.promo_id) : '', 'Discount':Number(l.discount||0), 'Net':Number(l.net), 'Senior/PWD':l.sc_type||'', 'Sale status':status}));
+    const k = d + '|' + s.store_id, x = sum[k] = sum[k] || {'Date':d, 'Store':storeName(s.store_id), 'Transactions':0, 'Cups':0, 'Gross':0, 'Discounts':0, 'Net sales':0,
+      'Cash':0, 'GCash':0, 'Grab':0, 'Foodpanda':0, 'Voids':0, 'Voided amount':0};
+    if(s.voided_at){ x['Voids']++; x['Voided amount'] += Number(s.total) }
+    else { x['Transactions']++; x['Cups'] += ls.reduce((a,l)=>a+l.qty,0); x['Gross'] += Number(s.gross); x['Discounts'] += Number(s.discount||0); x['Net sales'] += Number(s.total); x[PAY[s.pay]] = (x[PAY[s.pay]]||0) + Number(s.total) }
+  });
+  const summary = Object.values(sum).sort((a,b)=>a.Date.localeCompare(b.Date) || a.Store.localeCompare(b.Store));
+  summary.forEach(r => ['Gross','Discounts','Net sales','Cash','GCash','Grab','Foodpanda','Voided amount'].forEach(k => r[k] = Math.round(r[k]*100)/100));
+  return {summary, tx, lines};
+}
+function fileBase(){ const R = V.R || range(), st = V.store==='all' ? 'All stores' : storeName(V.store), last = addDays(R.to,-1);
+  return ('SagoLoco Sales ' + st + ' ' + (R.from===last ? R.from : R.from + ' to ' + last)).replace(/[^\w\- ]+/g,'').replace(/\s+/g,'_') }
+function saveBlob(blob, name){ const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click(); setTimeout(()=>{ URL.revokeObjectURL(a.href); a.remove() }, 1000) }
+function toCSV(rows){
+  if(!rows.length) return '';
+  const cols = Object.keys(rows[0]), cell = v => { const s = String(v ?? ''); return /[",\n\r]/.test(s) ? '"' + s.replace(/"/g,'""') + '"' : s };
+  return '﻿' + [cols.map(cell).join(','), ...rows.map(r => cols.map(c => cell(r[c])).join(','))].join('\r\n');   // ﻿: Excel reads ₱ and ñ correctly
+}
+let xlsxLoading;
+function loadXLSX(){ return window.XLSX ? Promise.resolve() : (xlsxLoading = xlsxLoading || new Promise((res, rej) => { const s = document.createElement('script');
+  s.src = 'https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js'; s.onload = res; s.onerror = () => { xlsxLoading = null; rej(new Error('excel')) }; document.head.appendChild(s) })) }
+function openDownload(){
+  const R = V.R || range(), n = (V.data||[]).length, where = V.store==='all' ? 'all stores' : storeName(V.store);
+  openSheet('Download sales', `<p>${n.toLocaleString('en-PH')} sale${n===1?'':'s'} · ${esc(R.label)} · ${esc(where)}. Voided sales are included and marked “Voided”; they are left out of the summary totals.</p>
+    <button class="primary" id="x_xlsx">Excel workbook (.xlsx)</button>
+    <p class="muted" style="margin:6px 0 14px">3 sheets: Daily summary (per day, per store), Transactions (one row per sale), Items (one row per drink).</p>
+    <div class="btnrow"><button class="btn" id="x_tx">CSV: transactions</button><button class="btn" id="x_items">CSV: items</button><button class="btn" id="x_sum">CSV: daily summary</button></div>
+    <p class="muted">CSV files open in Excel, Google Sheets or Numbers.</p>`);
+  const rows = saleRows(), base = fileBase();
+  busy($('x_xlsx'), 'Preparing…', async () => {
+    try{ await loadXLSX() }catch(_){ throw new Error('Couldn’t load the Excel maker. Check the internet, or use the CSV buttons below.') }
+    const wb = XLSX.utils.book_new(), add = (r, name, widths) => { const ws = XLSX.utils.json_to_sheet(r.length ? r : [{}]); ws['!cols'] = widths.map(w=>({wch:w})); XLSX.utils.book_append_sheet(wb, ws, name) };
+    add(rows.summary, 'Daily summary', [11,22,13,7,10,10,11,10,10,10,10,7,13]);
+    add(rows.tx, 'Transactions', [11,9,22,7,12,10,10,60,6,9,9,9,10,9,9,18,18]);
+    add(rows.lines, 'Items', [11,9,22,7,26,8,5,11,26,13,18,9,9,10,11]);
+    XLSX.writeFile(wb, base + '.xlsx'); closeEditor();
+  });
+  const csv = (id, r, suffix) => $(id).onclick = () => { saveBlob(new Blob([toCSV(r)], {type:'text/csv;charset=utf-8'}), base + '_' + suffix + '.csv') };
+  csv('x_tx', rows.tx, 'transactions'); csv('x_items', rows.lines, 'items'); csv('x_sum', rows.summary, 'daily_summary');
 }
 
 // ---------- menu & prices (HQ only; the database refuses edits from anyone else) ----------
@@ -388,15 +579,18 @@ function renderMenu(){
   $('view').innerHTML = `
     ${M.msg ? `<div class="okmsg">${esc(M.msg)}</div>` : ''}
     <p class="muted">Changes reach the store tablets within 5 minutes. Every change is logged with who made it.</p>
+    <div class="cols"><div>
     <div class="sec"><h2>Drinks</h2><button class="btn" data-edit="drink" data-id="">+ Add drink</button></div>
     <div class="list">${series.map(sr=>`<div class="grp">${esc(sr)}</div>${M.drinks.filter(d=>d.series===sr).map(drinkRow).join('')}`).join('')}</div>
+    </div><div>
     <div class="sec"><h2>Toppings</h2><button class="btn" data-edit="topping" data-id="">+ Add topping</button></div>
     <div class="list">${M.toppings.map(t=>`<button class="item ${t.active?'':'off'}" data-edit="topping" data-id="${esc(t.id)}">
       <div><div class="nm">${esc(t.name)}${t.active?'':'<span class="tag">Hidden</span>'}</div><div class="pr num">${peso(+t.price)}</div></div><span class="chev">›</span></button>`).join('')}</div>
     <div class="sec"><h2>Promos & discounts</h2><button class="btn" data-edit="promo" data-id="">+ Add promo</button></div>
     <div class="list">${M.promos.map(p=>`<button class="item ${p.active?'':'off'}" data-edit="promo" data-id="${esc(p.id)}">
       <div><div class="nm">${esc(p.name)}${p.active?'':'<span class="tag">Hidden</span>'}${p.id===LOCKED_PROMO?'<span class="tag">Set by law</span>':''}</div>
-      <div class="pr">${p.kind==='free'?'Free drink (toppings still paid)':(+p.pct)+'% off'}</div></div><span class="chev">›</span></button>`).join('')}</div>`;
+      <div class="pr">${p.kind==='free'?'Free drink (toppings still paid)':(+p.pct)+'% off'}</div></div><span class="chev">›</span></button>`).join('')}</div>
+    </div></div>`;
   M.msg = '';
   document.querySelectorAll('[data-edit]').forEach(b => b.onclick = () => openEditor(b.dataset.edit, b.dataset.id));
 }
@@ -566,10 +760,20 @@ async function showStores(){
   if(!hq && P.stores.length===1) P.sel = P.stores[0].id;   // a franchisee with one store goes straight to it
   drawStores();
 }
-function drawStores(){ if(V.tab!=='stores' || !$('view')) return; P.sel ? renderStore() : renderStoreList() }
+const wideStores = () => innerWidth >= 900 && P.stores.length > 0;
+function drawStores(){
+  if(V.tab!=='stores' || !$('view')) return;
+  if(wideStores()){   // computer: list on the left, the chosen store on the right
+    if(!P.sel || !storeOf(P.sel)) P.sel = P.stores[0].id;
+    $('view').innerHTML = `<div class="split"><aside id="pane-list"></aside><section id="pane-detail"></section></div>`;
+    renderStoreList($('pane-list')); renderStore($('pane-detail'));
+  } else P.sel ? renderStore($('view')) : renderStoreList($('view'));
+}
+let wasWide = null;
+addEventListener('resize', () => { const w = innerWidth >= 900; if(wasWide !== null && w !== wasWide && V.tab==='stores') drawStores(); wasWide = w });
 
-function renderStoreList(){
-  const hq = V.role==='hq';
+function renderStoreList(el){
+  const hq = V.role==='hq', wide = wideStores();
   const row = s => {
     const fr = peopleAt(s.id,'franchisee').filter(f=>!f.off), tab = peopleAt(s.id,'device')[0];
     const n = P.crew.filter(c=>c.store_id===s.id && c.active).length;
@@ -579,24 +783,24 @@ function renderStoreList(){
       bits.push(!tab ? 'No tablet login yet' : tab.off ? 'Tablet turned off' : 'Tablet login ready');
     }
     bits.push(n + ' crew');
-    return `<button class="item ${s.active?'':'off'}" data-store="${s.id}"><div><div class="nm">${esc(s.name)}<span class="tag">${esc(s.code)}</span>${s.active?'':'<span class="tag">Closed</span>'}</div>
+    return `<button class="item ${s.active?'':'off'}" data-store="${s.id}" ${wide && s.id===P.sel ? 'aria-current="true"' : ''}><div><div class="nm">${esc(s.name)}<span class="tag">${esc(s.code)}</span>${s.active?'':'<span class="tag">Closed</span>'}</div>
       <div class="pr">${bits.map(esc).join(' · ')}</div></div><span class="chev">›</span></button>`;
   };
-  $('view').innerHTML = `${P.msg?`<div class="okmsg">${esc(P.msg)}</div>`:''}
+  el.innerHTML = `${P.msg && !wide?`<div class="okmsg">${esc(P.msg)}</div>`:''}
     <p class="muted">${hq ? 'Each store needs three things: a franchisee login (if franchised), a tablet login for the counter, and its crew. Nothing here is ever deleted; people and stores are turned off instead.'
       : 'Tap a store to add crew, reset a forgotten PIN, or turn off someone who left.'}</p>
     <div class="sec"><h2>Stores</h2>${hq?'<button class="btn" id="addStore">+ Add store</button>':''}</div>
     <div class="list">${P.stores.map(row).join('') || '<p class="empty">No stores yet.</p>'}</div>`;
-  P.msg = '';
-  document.querySelectorAll('[data-store]').forEach(b => b.onclick = () => { P.sel = b.dataset.store; drawStores(); window.scrollTo(0,0) });
+  if(!wide) P.msg = '';
+  document.querySelectorAll('[data-store]').forEach(b => b.onclick = () => { P.sel = b.dataset.store; P.msg = ''; drawStores(); if(!wide) window.scrollTo(0,0) });
   if($('addStore')) $('addStore').onclick = () => storeForm(null);
 }
 
-function renderStore(){
-  const hq = V.role==='hq', s = storeOf(P.sel);
+function renderStore(el){
+  const hq = V.role==='hq', s = storeOf(P.sel), wide = wideStores();
   const fr = peopleAt(s.id,'franchisee'), tab = peopleAt(s.id,'device')[0];
   const crew = P.crew.filter(c=>c.store_id===s.id).sort((a,b)=>(b.active-a.active) || a.name.localeCompare(b.name));
-  const back = hq || P.stores.length > 1 ? `<button class="btn" id="back" style="margin-bottom:12px">‹ All stores</button>` : '';
+  const back = !wide && (hq || P.stores.length > 1) ? `<button class="btn" id="back" style="margin-bottom:12px">‹ All stores</button>` : '';
   const kv = (k,v) => `<div class="row"><span class="l muted">${k}</span><span class="r">${esc(v)}</span></div>`;
 
   const details = `<div class="card" id="store-details"><h2>${esc(s.name)} <span class="tag">${esc(s.code)}</span>${s.active?'':'<span class="tag">Closed</span>'}</h2><div class="rows">
@@ -624,7 +828,7 @@ function renderStore(){
           : `<button class="btn" data-crewon="${c.id}">Turn back on</button>`}</div></div>`).join('') || '<p class="muted">No crew yet. Add each person who works the counter; they make their own 4-digit PIN the first time they use the tablet.</p>'}
       <button class="btn" id="addCrew">+ Add crew</button></div>`;
 
-  $('view').innerHTML = `${back}${P.msg?`<div class="okmsg">${esc(P.msg)}</div>`:''}${details}${frCard}${tabCard}${crewCard}`;
+  el.innerHTML = `${back}${P.msg?`<div class="okmsg">${esc(P.msg)}</div>`:''}<div class="detailgrid">${details}${frCard}${tabCard}${crewCard}</div>`;
   P.msg = '';
   if($('back')) $('back').onclick = () => { P.sel = null; drawStores() };
   if($('editStore')) $('editStore').onclick = () => storeForm(s);
@@ -813,7 +1017,7 @@ function renderSetPassword(token, msg){
   });
 }
 
-document.addEventListener('visibilitychange', ()=>{ if(!document.hidden && V.role && V.tab==='sales' && V.date===phDate()) load(true) });
+document.addEventListener('visibilitychange', ()=>{ if(!document.hidden && V.role && V.tab==='sales' && V.R && V.R.live) load(true) });
 const setupToken = (location.hash.match(/[#&]setup=([^&]+)/) || [])[1];
 if(setupToken) sb.auth.signOut({scope:'local'}).finally(() => renderSetPassword(decodeURIComponent(setupToken)));
 else start().catch(()=>renderSignin('Couldn’t reach the server. Check the internet and try again.'));
