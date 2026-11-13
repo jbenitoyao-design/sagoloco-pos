@@ -610,9 +610,12 @@ async function checkPin(crewId, pin){
   if(S.pinCache[crewId]) return {ok: S.pinCache[crewId]===key};
   return {ok:false, msg:'Needs internet to check this PIN the first time.'};
 }
+// online: the server decides, so a PIN that HQ or the franchisee reset is forgotten here too (B-17)
 async function hasPin(crewId){
-  if(MODE==='demo' || S.pinCache[crewId] || !navigator.onLine || !sb) return true;
-  try{ const r = await sb.rpc('crew_has_pin', {p_crew:crewId}); if(r.error) throw r.error; return !!r.data }catch(_){ return true }
+  if(MODE==='demo' || !navigator.onLine || !sb) return true;
+  try{ const r = await sb.rpc('crew_has_pin', {p_crew:crewId}); if(r.error) throw r.error;
+    if(!r.data && S.pinCache[crewId]){ delete S.pinCache[crewId]; save() }
+    return !!r.data }catch(_){ return true }
 }
 async function claimPin(crewId, pin){
   try{
