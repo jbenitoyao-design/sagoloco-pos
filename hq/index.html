@@ -958,13 +958,17 @@ function crewForm(s){
 // ---- results: shown once, then gone ----
 function copyBtn(id, text){ const b = $(id); if(!b) return;
   b.onclick = async () => { try{ await navigator.clipboard.writeText(text); b.textContent = 'Copied ✓' }catch(_){ b.textContent = 'Select and copy it' } setTimeout(()=>{ if(document.body.contains(b)) b.textContent = 'Copy' }, 2000) } }
+// the franchisee how-to guide (PRODUCTS/Training_Deployed); replace this file to update it
+const GUIDE_URL = 'https://pos.sagoloco.com/hq/franchisee-guide.pdf';
 function linkResult(name, email, link){
   const first = String(name).split(/\s+/)[0];
-  const msg = `Hi ${first}! Here is your Sago Loco HQ login, where you can see your store's sales and manage your crew.\n\n1. Open this link and choose your password:\n${link}\n\n2. After that, sign in anytime at pos.sagoloco.com/hq with ${email}\n\nThe link works once and expires in 24 hours. If it expires, message HQ for a new one.`;
+  const msg = `Hi ${first}! Here is your Sago Loco HQ login, where you can see your store's sales and manage your crew.\n\n1. Open this link and choose your password:\n${link}\n\n2. After that, sign in anytime at pos.sagoloco.com/hq with ${email}\n\nThe link works once and expires in 24 hours. If it expires, message HQ for a new one.\n\nHow-to guide (PDF): ${GUIDE_URL}`;
   openSheet('Send the setup link', `<div class="okmsg">Login ready for ${esc(name)}. Send them this message by Viber, Messenger or email.</div>
     <textarea class="msg" id="r_msg" readonly>${esc(msg)}</textarea>
     <div class="btnrow"><button class="primary" id="r_copy">Copy message</button>${navigator.share?'<button class="btn" id="r_share">Share…</button>':''}
       <a class="btn" style="text-align:center;text-decoration:none" href="mailto:${encodeURIComponent(email)}?subject=${encodeURIComponent('Your Sago Loco HQ login')}&body=${encodeURIComponent(msg)}">Email it</a></div>
+    <div class="btnrow"><a class="btn" style="text-align:center;text-decoration:none" href="${GUIDE_URL}" download="Sago Loco POS Guide for Franchisees.pdf" id="r_guide">⬇ Download the franchisee guide</a></div>
+    <p class="muted">The guide’s web address is already in the message above. To send the file itself, download it and attach it in Viber or email.</p>
     <p class="muted">Don’t open the link yourself: it works only once. If they didn’t get it, tap “New setup link” on the store page.</p>
     <button class="btn" id="r_done" style="width:100%;margin-top:8px">Done</button>`);
   const b = $('r_copy'); b.onclick = async () => { try{ await navigator.clipboard.writeText(msg); b.textContent = 'Copied ✓' }catch(_){ $('r_msg').select(); b.textContent = 'Press Copy on the selected text' } };
