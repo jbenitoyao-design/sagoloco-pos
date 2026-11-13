@@ -467,7 +467,7 @@ function renderBody(){
         <div class="stat"><b class="num">${m.n.toLocaleString('en-PH')}</b><span>Transactions</span></div>
         <div class="stat"><b class="num">${peso(m.avg)}</b><span>Avg ticket</span></div>
         <div class="stat"><b class="num">${m.cups.toLocaleString('en-PH')}</b><span>Cups sold</span></div>
-        ${multi?`<div class="stat"><b class="num">${peso(m.net/Math.max(1,R.days))}</b><span>Per day</span></div>`:''}
+        ${multi?`<div class="stat"><b class="num">${peso(Math.round(m.net/Math.max(1,R.days)))}</b><span>Per day (avg)</span></div>`:''}
       </div></div>
       <p class="muted" style="margin:10px 0 0">${m.disc?`Discounts ${peso(m.disc)} · `:''}${m.voids?`${m.voids} voided, ${peso(m.voidAmt)} (not counted)`:'No voids'}${R.live&&V.updated?` · Updated ${new Date(V.updated).toLocaleTimeString('en-PH',{hour:'numeric',minute:'2-digit'})}`:''}</p>
     </div>
@@ -487,7 +487,7 @@ function renderBody(){
     </div>
     ${multi ? `<div class="card span8"><h2>Busiest hours</h2>${barChart('hours', charts.hours, 'Busiest')}</div>` : ''}
     ${storeRows ? `<div class="card span4"><h2>By store</h2><table><thead><tr><th>Store</th><th class="r">Txns</th><th class="r">Sales</th><th class="r">Share</th></tr></thead><tbody>${storeRows}</tbody></table></div>` : ''}
-    <div class="card span12" id="transactions"><div class="sec" style="margin:0 0 8px"><h2 style="margin:0">Transactions · ${tx.length.toLocaleString('en-PH')}</h2><span class="muted">Newest first</span></div>
+    <div class="card span12" id="transactions"><div class="sec" style="margin:0 0 8px"><h2 style="margin:0">Transactions · ${tx.length.toLocaleString('en-PH')}${m.voids?` (${m.voids} voided)`:''}</h2><span class="muted">Newest first</span></div>
       <div class="tablewrap"><table class="tx"><thead><tr><th>${multi?'Date & time':'Time'}</th>${allStores?'<th>Store</th>':''}<th>Sale</th><th>Crew</th><th>Type</th><th>Items</th><th class="r">Total</th></tr></thead>
         <tbody>${shown.map(txRow).join('')}</tbody></table></div>
       ${tx.length > shown.length ? `<button class="btn" id="txmore" style="margin-top:10px">Show ${Math.min(100, tx.length-shown.length)} more</button>` : ''}
