@@ -863,7 +863,9 @@ function crewDay(id){
   if(bAt) brk += Date.now() - bAt;
   return {ev, status, worked, brk};
 }
-const nextActs = st => st==='out' ? ['in'] : st==='in' ? ['bstart','out'] : ['bend'];
+// one break per day, matching the handbook's single 1-hour meal break (JB 11.13.2026)
+const breakUsed = d => d.ev.some(e => e.type==='bstart');
+const nextActs = d => d.status==='out' ? ['in'] : d.status==='in' ? (breakUsed(d) ? ['out'] : ['bstart','out']) : ['bend'];
 let tc = newPinState({act:null});
 function renderClock(){
   const c = tc.crew && S.crew.find(x=>x.id===tc.crew), ok = !!c && tc.status==='ok';
@@ -872,12 +874,12 @@ function renderClock(){
   if(!c) body = S.crew.map(x=>{
     const d = crewDay(x.id), first = d.ev.find(e=>e.type==='in'), last = d.ev.filter(e=>e.type==='out').pop();
     return `<div class="card tc"><div><h2>${esc(x.name)}</h2><span class="st ${d.status}">${stTxt[d.status]}</span></div>
-      <button class="btn primary" data-act="tcrew" data-id="${x.id}">${d.status==='out' ? 'Time in' : d.status==='break' ? 'End break' : 'Break / out'}</button>
+      <button class="btn primary" data-act="tcrew" data-id="${x.id}">${d.status==='out' ? 'Time in' : d.status==='break' ? 'End break' : breakUsed(d) ? 'Time out' : 'Break / out'}</button>
       <div class="times num"><span>In <b>${first?fmtTime(first.at):'—'}</b></span><span>Out <b>${last && d.status==='out'?fmtTime(last.at):'—'}</b></span><span>Worked <b>${hm(d.worked)}</b></span><span>Breaks <b>${hm(d.brk)}</b></span></div>
       ${d.ev.length?`<div class="shots">${d.ev.map(e=>`<div class="shot">${e.photo?`<img src="${e.photo}" alt="${esc(x.name)} ${TC_LABEL[e.type]} selfie">`:'<span class="ph"></span>'}${TC_LABEL[e.type]} ${fmtTime(e.at)}</div>`).join('')}</div>`:''}</div>`;
   }).join('') || '<p class="hint">No crew yet. Ask HQ to add this store’s crew.</p>';
   else if(!ok) body = pinHtml(tc, 'tpin');
-  else if(!tc.act) body = `<div class="acts">${nextActs(crewDay(c.id).status).map(a=>`<button class="charge" data-act="tact" data-a="${a}">${TC_LABEL[a]}</button>`).join('')}</div>`;
+  else if(!tc.act) body = `<div class="acts">${nextActs(crewDay(c.id)).map(a=>`<button class="charge" data-act="tact" data-a="${a}">${TC_LABEL[a]}</button>`).join('')}</div>`;
   else body = `<div class="card"><h3>${TC_LABEL[tc.act]} · ${esc(c.name)}</h3><p class="hint">Take a selfie at the counter so the time is confirmed.</p>
       <label class="charge" for="selfie" style="text-align:center">Open camera</label>
       <input type="file" id="selfie" accept="image/*" capture="user" hidden></div>`;
