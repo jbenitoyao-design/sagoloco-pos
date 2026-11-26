@@ -288,7 +288,9 @@ const DEMO_PROMOS = [
   {id:'scpwd', n:'Senior / PWD 20%',    pct:20},
   {id:'sw-10', n:'Scratch ₱10 off', amt:10}, {id:'sw-30', n:'Scratch ₱30 off', amt:30},
   {id:'sw-b1t1', n:'Scratch B1T1 free Tall', free:true}, {id:'sw-top', n:'Scratch free topping', amt:15},
-  {id:'sw-upsize', n:'Scratch free upsize', upsize:true}
+  {id:'sw-upsize', n:'Scratch free upsize', upsize:true},
+  {id:'freq-f1', n:'Frequency F1', mark:true}, {id:'freq-f2', n:'Frequency F2', mark:true}, {id:'freq-f3', n:'Frequency F3', mark:true},
+  {id:'freq-f4', n:'Frequency F4', mark:true}, {id:'freq-f5', n:'Frequency F5', mark:true}
 ];
 const SIZE_NAME = {R:'Regular',T:'Tall',G:'Grande'};
 const CHANNELS = [{id:'walkin',n:'Walk-in'},{id:'grab',n:'Grab'},{id:'panda',n:'Foodpanda'}];
@@ -309,7 +311,7 @@ function applyLiveCatalog(cat){
   MENU = cat.menu.filter(r=>r.active).sort((a,b)=>a.sort-b.sort).map(r=>({id:r.id, s:sid(r.series), n:r.name, sizes:r.sizes, del:r.delivery,
     panda: r.panda !== undefined ? r.panda : r.delivery}));   // a menu saved before Foodpanda had its own prices uses the Grab price
   TOPPINGS = cat.toppings.filter(t=>t.active).map(t=>({id:t.id, n:t.name, p:+t.price}));
-  PROMOS = cat.promos.filter(p=>p.active).map(p=>p.kind==='free' ? {id:p.id, n:p.name, free:true} : p.kind==='amount' ? {id:p.id, n:p.name, amt:+p.amount} : p.kind==='upsize' ? {id:p.id, n:p.name, upsize:true} : {id:p.id, n:p.name, pct:+p.pct});
+  PROMOS = cat.promos.filter(p=>p.active).map(p=>p.kind==='free' ? {id:p.id, n:p.name, free:true} : p.kind==='amount' ? {id:p.id, n:p.name, amt:+p.amount} : p.kind==='upsize' ? {id:p.id, n:p.name, upsize:true} : p.kind==='mark' ? {id:p.id, n:p.name, mark:true} : {id:p.id, n:p.name, pct:+p.pct});
   STORE = {name:cat.store.name, vat:!!cat.store.vat_registered};
   indexCatalog();
 }

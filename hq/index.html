@@ -699,7 +699,7 @@ const M = {drinks:[], toppings:[], promos:[], msg:''};
 const LOCKED_PROMO = 'scpwd';   // Senior/PWD 20% is set by law
 const slug = s => s.toLowerCase().normalize('NFD').replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'').slice(0,40) || 'item';
 const newId = (name, list) => { let b = slug(name), id = b, i = 2; while(list.some(x=>x.id===id)) id = b + '-' + i++; return id };
-const promoDesc = x => x.kind==='free' ? 'Free drink (toppings still paid)' : x.kind==='amount' ? peso(+x.amount)+' off each cup' : x.kind==='upsize' ? 'Free upsize (Grande at the Tall price)' : (+x.pct)+'% off';
+const promoDesc = x => x.kind==='free' ? 'Free drink (toppings still paid)' : x.kind==='amount' ? peso(+x.amount)+' off each cup' : x.kind==='upsize' ? 'Free upsize (Grande at the Tall price)' : x.kind==='mark' ? 'Record only (₱0 off)' : (+x.pct)+'% off';
 const priceTxt = o => o ? ['R','T','G'].filter(k=>o[k]!=null).map(k=>k+' '+peso(o[k])).join(' · ') : '';
 
 async function showMenu(){
@@ -788,7 +788,7 @@ function drawEditor(){
     const locked = row && row.id===LOCKED_PROMO;
     body = locked ? `<div class="callout">Senior Citizen and PWD discounts are set by law (20%, plus VAT removal for VAT stores). This one can’t be changed or hidden.</div>`
       : `<div class="field"><label for="e_name">Promo name</label><input id="e_name" autocomplete="off" value="${esc(row?row.name:'')}"></div>
-      <div class="field"><label for="e_kind">Type</label><select id="e_kind"><option value="free" ${row&&row.kind==='free'?'selected':''}>Free drink (toppings still paid)</option><option value="pct" ${row&&row.kind==='pct'?'selected':''}>Percent off</option><option value="amount" ${row&&row.kind==='amount'?'selected':''}>Peso off (₱)</option><option value="upsize" ${row&&row.kind==='upsize'?'selected':''}>Free upsize (Grande at the Tall price)</option></select></div>
+      <div class="field"><label for="e_kind">Type</label><select id="e_kind"><option value="free" ${row&&row.kind==='free'?'selected':''}>Free drink (toppings still paid)</option><option value="pct" ${row&&row.kind==='pct'?'selected':''}>Percent off</option><option value="amount" ${row&&row.kind==='amount'?'selected':''}>Peso off (₱)</option><option value="upsize" ${row&&row.kind==='upsize'?'selected':''}>Free upsize (Grande at the Tall price)</option><option value="mark" ${row&&row.kind==='mark'?'selected':''}>Record only (₱0 off, e.g. a card stamp)</option></select></div>
       <div class="field" id="pctbox" ${row&&row.kind==='pct'?'':'hidden'}><label for="e_pct">Percent off</label><input id="e_pct" class="num" inputmode="decimal" autocomplete="off" value="${row&&row.pct!=null?+row.pct:''}"></div>
       <div class="field" id="amtbox" ${row&&row.kind==='amount'?'':'hidden'}><label for="e_amt">Peso off each cup</label><input id="e_amt" class="num" inputmode="decimal" autocomplete="off" placeholder="e.g. 10" value="${row&&row.amount!=null?+row.amount:''}"><small>Taken off each cup it’s used on (drink + toppings). A cup never goes below ₱0.</small></div>
       <label class="switch"><span>Available at the counter</span><input type="checkbox" id="e_active" ${!row||row.active?'checked':''}></label>`;
@@ -902,7 +902,7 @@ function menuSheets(blank){
     [['Walk-in',x.sizes],['Grab',x.delivery],['Foodpanda',x.panda]].forEach(([c,o]) => XL_SIZES.forEach(([k,n]) => r[c+' '+n] = o && o[k]!=null ? Number(o[k]) : ''));
     r['On menu'] = x.active ? 'Yes' : 'No'; return r });
   const tops = (blank ? [] : M.toppings).map(t => ({'Code':t.id, 'Topping':t.name, 'Price':Number(t.price), 'On menu':t.active?'Yes':'No'}));
-  const promos = (blank ? [] : M.promos).map(p => ({'Code':p.id, 'Promo':p.name, 'Type':p.kind==='free'?'Free drink':p.kind==='amount'?'Peso off':p.kind==='upsize'?'Free upsize':'Percent off', 'Percent':p.kind==='pct'?Number(p.pct):'', 'Amount':p.kind==='amount'?Number(p.amount):'', 'On menu':p.active?'Yes':'No'}));
+  const promos = (blank ? [] : M.promos).map(p => ({'Code':p.id, 'Promo':p.name, 'Type':p.kind==='free'?'Free drink':p.kind==='amount'?'Peso off':p.kind==='upsize'?'Free upsize':p.kind==='mark'?'Record only':'Percent off', 'Percent':p.kind==='pct'?Number(p.pct):'', 'Amount':p.kind==='amount'?Number(p.amount):'', 'On menu':p.active?'Yes':'No'}));
   return {drinks, tops, promos};
 }
 async function downloadMenu(blank){
@@ -989,8 +989,8 @@ function planMenuUpload(wb){
     const where = `Promos row ${row}${name?` (${name})`:''}`;
     if(code===LOCKED_PROMO) return;   // Senior/PWD is set by law; the row is ignored
     if(!name){ errors.push(`${where}: the Promo name is empty.`); return }
-    const kind = /^(free )?upsize/.test(type) ? 'upsize' : /^free/.test(type) ? 'free' : /^(percent|%|pct)/.test(type) ? 'pct' : /^(peso|php|₱|amount|fixed)/.test(type) ? 'amount' : null;
-    if(!kind){ errors.push(`${where}: Type must be “Free drink”, “Percent off”, “Peso off” or “Free upsize”.`); return }
+    const kind = /^(free )?upsize/.test(type) ? 'upsize' : /^record/.test(type) ? 'mark' : /^free/.test(type) ? 'free' : /^(percent|%|pct)/.test(type) ? 'pct' : /^(peso|php|₱|amount|fixed)/.test(type) ? 'amount' : null;
+    if(!kind){ errors.push(`${where}: Type must be “Free drink”, “Percent off”, “Peso off”, “Free upsize” or “Record only”.`); return }
     let pct = null, amount = null;
     if(kind==='pct'){ pct = xlPrice(xlGet(r,'Percent')); if(pct==null || Number.isNaN(pct) || pct<=0 || pct>100){ errors.push(`${where}: Percent must be between 1 and 100.`); return } }
     if(kind==='amount'){ amount = xlPrice(xlGet(r,'Amount')); if(amount==null || Number.isNaN(amount) || amount<=0){ errors.push(`${where}: Amount must be a peso amount like 10.`); return } }
