@@ -709,7 +709,9 @@ const M = {drinks:[], toppings:[], promos:[], msg:''};
 const LOCKED_PROMO = 'scpwd';   // Senior/PWD 20% is set by law
 const slug = s => s.toLowerCase().normalize('NFD').replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'').slice(0,40) || 'item';
 const newId = (name, list) => { let b = slug(name), id = b, i = 2; while(list.some(x=>x.id===id)) id = b + '-' + i++; return id };
-const promoDesc = x => x.kind==='free' ? 'Free drink (toppings still paid)' : x.kind==='amount' ? peso(+x.amount)+' off each cup' : x.kind==='upsize' ? 'Free upsize (Grande at the Tall price)' : x.kind==='mark' ? 'Record only (₱0 off)' : (+x.pct)+'% off';
+const promoBase = x => x.kind==='free' ? 'Free drink (toppings still paid)' : x.kind==='amount' ? peso(+x.amount)+' off each cup' : x.kind==='upsize' ? 'Free upsize (Grande at the Tall price)' : x.kind==='mark' ? 'Record only (₱0 off)' : (+x.pct)+'% off';
+// a promo limited to some drinks or one size says so (e.g. Frequency reward: Tall Golden Regal Mango only)
+const promoDesc = x => promoBase(x) + ((x.drinks && x.drinks.length) || x.size ? ' · ' + (x.size ? ({R:'Regular',T:'Tall',G:'Grande'})[x.size] + ' ' : '') + (x.drinks && x.drinks.length ? x.drinks.map(id => (M.drinks.find(d=>d.id===id)||{name:id}).name).join(' / ') : 'any drink') + ' only' : '');
 const priceTxt = o => o ? ['R','T','G'].filter(k=>o[k]!=null).map(k=>k+' '+peso(o[k])).join(' · ') : '';
 
 async function showMenu(){
@@ -864,7 +866,7 @@ function checkEdit(){
     data.kind = f.e_kind; data.pct = null; data.amount = null;
     if(data.kind==='pct'){ const p = num(f.e_pct); if(p==null || Number.isNaN(p) || p<=0 || p>100){ ED.err = 'Percent must be between 1 and 100.'; drawEditor(); return } data.pct = p }
     if(data.kind==='amount'){ const a = num(f.e_amt); if(a==null || Number.isNaN(a) || a<=0){ ED.err = 'Enter the peso amount, like 10.'; drawEditor(); return } data.amount = a }
-    const desc = promoDesc;
+    const desc = promoBase;
     if(row){ if(desc(row)!==desc(data)) lines.push(`Type: ${desc(row)} → ${desc(data)}`) } else lines.push(`${name} · ${desc(data)}`);
   }
   if(row && row.active!==data.active) lines.push(data.active ? 'Put back on the menu' : 'Hide from the tablets');
@@ -1005,7 +1007,7 @@ function planMenuUpload(wb){
     if(kind==='pct'){ pct = xlPrice(xlGet(r,'Percent')); if(pct==null || Number.isNaN(pct) || pct<=0 || pct>100){ errors.push(`${where}: Percent must be between 1 and 100.`); return } }
     if(kind==='amount'){ amount = xlPrice(xlGet(r,'Amount')); if(amount==null || Number.isNaN(amount) || amount<=0){ errors.push(`${where}: Amount must be a peso amount like 10.`); return } }
     if(seenP.has(name.toLowerCase())){ errors.push(`${where}: “${name}” is in the file twice.`); return } seenP.add(name.toLowerCase());
-    const data = {name, kind, pct, amount, active: yes(xlGet(r,'On menu'))}, desc = promoDesc;
+    const data = {name, kind, pct, amount, active: yes(xlGet(r,'On menu'))}, desc = promoBase;
     const old = code ? M.promos.find(p => p.id===code) : M.promos.find(p => p.name.toLowerCase()===name.toLowerCase());
     if(old && old.id===LOCKED_PROMO) return;
     if(code && !old){ errors.push(`${where}: Code “${code}” isn’t on the menu. For a new promo, leave Code blank.`); return }
@@ -1089,7 +1091,7 @@ async function showStores(){
       sb.from('stores').select('id,code,name,address,company_owned,vat_registered,active').order('name'),
       sb.from('crew').select('id,store_id,name,active').order('name'),
       hq ? hqCall('people') : Promise.resolve({people:[]}),
-      sb.from('devices').select('device_id,store_id,app_version,outbox_n,failed_n,last_seen').then(r => r.data || [], () => []),
+      sb.from('devices').select('*').then(r => r.data || [], () => []),
       // the newest app version = what pos.sagoloco.com serves right now
       fetch('/index.html', {cache:'no-store'}).then(r => r.text()).then(t => (t.match(/APP_VERSION = '([^']+)'/)||[])[1] || null).catch(() => null)
     ]);
@@ -1167,7 +1169,7 @@ function renderStore(el){
   const devRow = d => { const mins = Math.round((Date.now() - Date.parse(d.last_seen))/6e4), old = P.latest && d.app_version !== P.latest;
     return `<div class="row"><span class="l">${devs.length>1 ? 'Tablet …' + esc(d.device_id.slice(-4)) : 'Tablet'}</span><span class="r">App ${esc(d.app_version||'?')}
       ${old ? '<span class="tag warn">Old version · reopen the app</span>' : P.latest ? '<span class="tag good">Latest</span>' : ''}<br>
-      <span class="muted">${mins < 2 ? 'Checked in just now' : mins < 60 ? 'Checked in ' + mins + ' min ago' : 'Last checked in ' + when(d.last_seen)}${d.outbox_n ? ' · ' + d.outbox_n + ' waiting to sync' : ''}${d.failed_n ? ' · <b>' + d.failed_n + ' couldn’t sync</b>' : ''}</span></span></div>`;
+      <span class="muted">${mins < 2 ? 'Checked in just now' : mins < 60 ? 'Checked in ' + mins + ' min ago' : 'Last checked in ' + when(d.last_seen)}${d.outbox_n ? ' · ' + d.outbox_n + ' waiting to sync' : ''}${d.failed_n ? ' · <b>' + d.failed_n + ' couldn’t sync</b>' : ''}</span>${d.last_error ? '<br><span class="muted">Latest problem: ' + esc(d.last_error) + '</span>' : ''}</span></div>`;
   };
   const devCard = `<div class="card" id="store-devices"><h2>Tablet check-in</h2>${devs.length ? devs.slice(0,3).map(devRow).join('') : '<p class="muted">No check-in yet. The tablet reports every 5 minutes while it’s online with the latest app.</p>'}</div>`;
   const tabCard = !hq ? '' : `<div class="card" id="store-tablet"><h2>Store tablet</h2>

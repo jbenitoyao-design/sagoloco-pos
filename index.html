@@ -238,7 +238,7 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--ube);outline-of
 const SB_URL = 'https://fsdaiiazdnkmsqwyxrcj.supabase.co';
 const SB_KEY = 'sb_publishable_qv46qcVUERE-2ivDDbKKAA_eU7QZcS6';
 // bump on every deploy: HQ shows which version each store tablet runs (v14 check-in)
-const APP_VERSION = '2026-11-26.11';
+const APP_VERSION = '2026-11-26.12';
 // look-only preview opened from HQ (pos.sagoloco.com/?preview): real menu, no database, nothing saved on this device
 const PREVIEW = new URLSearchParams(location.search).has('preview'), KEY_PREVIEW = 'slpos.preview.catalog';
 let sb = null;
@@ -283,7 +283,6 @@ const DEMO_TOPPINGS = [
 ];
 // promos are discounts on a line, so reports show what each promo cost
 const DEMO_PROMOS = [
-  {id:'freq',  n:'Frequency Card',      free:true},
   {id:'b1t1',  n:'B1T1 free drink',     free:true},
   {id:'fb',    n:'FB Commenter',        free:true},
   {id:'comp',  n:'Complimentary',       free:true},
@@ -292,7 +291,9 @@ const DEMO_PROMOS = [
   {id:'sw-b1t1', n:'Scratch B1T1 free Tall', free:true}, {id:'sw-top', n:'Scratch free topping', amt:15},
   {id:'sw-upsize', n:'Scratch free upsize', upsize:true},
   {id:'freq-f1', n:'Frequency F1', mark:true}, {id:'freq-f2', n:'Frequency F2', mark:true}, {id:'freq-f3', n:'Frequency F3', mark:true},
-  {id:'freq-f4', n:'Frequency F4', mark:true}, {id:'freq-f5', n:'Frequency F5', mark:true}
+  {id:'freq-f4', n:'Frequency F4', mark:true}, {id:'freq-f5', n:'Frequency F5', mark:true},
+  {id:'freq-regal', n:'Frequency FREE Regal Mango Tall', free:true, drinks:['gm-regal'], size:'T'},
+  {id:'freq-ube', n:'Frequency FREE Ube Dream Tall', free:true, drinks:['ube-dn','ube-dp'], size:'T'}
 ];
 const SIZE_NAME = {R:'Regular',T:'Tall',G:'Grande'};
 const CHANNELS = [{id:'walkin',n:'Walk-in'},{id:'grab',n:'Grab'},{id:'panda',n:'Foodpanda'}];
@@ -313,7 +314,9 @@ function applyLiveCatalog(cat){
   MENU = cat.menu.filter(r=>r.active).sort((a,b)=>a.sort-b.sort).map(r=>({id:r.id, s:sid(r.series), n:r.name, sizes:r.sizes, del:r.delivery,
     panda: r.panda !== undefined ? r.panda : r.delivery}));   // a menu saved before Foodpanda had its own prices uses the Grab price
   TOPPINGS = cat.toppings.filter(t=>t.active).map(t=>({id:t.id, n:t.name, p:+t.price}));
-  PROMOS = cat.promos.filter(p=>p.active).map(p=>p.kind==='free' ? {id:p.id, n:p.name, free:true} : p.kind==='amount' ? {id:p.id, n:p.name, amt:+p.amount} : p.kind==='upsize' ? {id:p.id, n:p.name, upsize:true} : p.kind==='mark' ? {id:p.id, n:p.name, mark:true} : {id:p.id, n:p.name, pct:+p.pct});
+  PROMOS = cat.promos.filter(p=>p.active).map(p=>Object.assign(p.kind==='free' ? {id:p.id, n:p.name, free:true} : p.kind==='amount' ? {id:p.id, n:p.name, amt:+p.amount} : p.kind==='upsize' ? {id:p.id, n:p.name, upsize:true} : p.kind==='mark' ? {id:p.id, n:p.name, mark:true} : {id:p.id, n:p.name, pct:+p.pct},
+    // optional limits from HQ: only these drinks / only this size (e.g. Frequency reward = Tall Regal Mango)
+    p.drinks && p.drinks.length ? {drinks:p.drinks} : {}, p.size ? {size:p.size} : {}));
   STORE = {name:cat.store.name, vat:!!cat.store.vat_registered};
   indexCatalog();
 }
@@ -486,7 +489,7 @@ async function refreshCatalog(){
       sb.from('stores').select('id,name,vat_registered').eq('id', S.storeId).maybeSingle(),
       sb.from('menu_items').select('id,series,name,sizes,delivery,panda,sort,active'),
       sb.from('toppings').select('id,name,price,active'),
-      sb.from('promos').select('id,name,kind,pct,amount,active'),
+      sb.from('promos').select('*'),
       sb.from('crew').select('id,name,role,active').eq('store_id', S.storeId).eq('active', true).order('name'),
       sb.from('sales').select('sale_no').eq('store_id', S.storeId).order('sale_no', {ascending:false}).limit(1)
     ]);
@@ -542,10 +545,20 @@ function renderStale(){
     <button class="charge" data-act="staleclose">Yes, close it now</button>
     <button class="btn" data-act="stalekeep" style="align-self:flex-start">No, keep using it</button></div>`);
 }
+// the newest problem in plain words for HQ's check-in card: an app error, or the last record that couldn't sync
+let JS_ERR = null;
+addEventListener('error', e => { JS_ERR = {at:Date.now(), msg:String(e.message||e.error||'error') + (e.lineno ? ' (line ' + e.lineno + ')' : '')} });
+addEventListener('unhandledrejection', e => { JS_ERR = {at:Date.now(), msg:'Unhandled: ' + String(e.reason && (e.reason.message || e.reason) || 'promise')} });
+function lastError(){
+  const f = (S.failed||[]).slice(-1)[0], parts = [];
+  if(JS_ERR) parts.push('App error ' + fmtTime(JS_ERR.at) + ': ' + JS_ERR.msg);
+  if(f) parts.push('Not synced (' + f.op + '): ' + f.error);
+  return parts.length ? parts.join(' | ').slice(0, 500) : null;
+}
 // check-in: tells HQ this tablet's app version and sync backlog; the database stamps the time. Never blocks anything.
 async function checkIn(){
   if(MODE!=='live' || !sb || !navigator.onLine || !S.storeId || !S.deviceId) return;
-  try{ await sb.from('devices').upsert({device_id:S.deviceId, store_id:S.storeId, app_version:APP_VERSION, outbox_n:S.outbox.length, failed_n:(S.failed||[]).length}, {onConflict:'device_id'}) }catch(_){}
+  try{ await sb.from('devices').upsert({device_id:S.deviceId, store_id:S.storeId, app_version:APP_VERSION, outbox_n:S.outbox.length, failed_n:(S.failed||[]).length, last_error:lastError()}, {onConflict:'device_id'}) }catch(_){}
 }
 // a sale voided from the office (HQ or franchisee) shows as voided here too, so the Z report and cash count match the database
 async function pullOfficeVoids(){
@@ -749,14 +762,16 @@ function renderTicket(){
 // ---- drink sheet: toppings / promo first, size tap adds ----
 function openPick(id){ UI.pick = {id, tops:[], promo:null, sc:{type:'Senior', name:'', id:''}}; renderPick() }
 function renderPick(){
-  const p = UI.pick, d = byId[p.id], full = priceTable(d), up = p.promo && promoById[p.promo] && promoById[p.promo].upsize;
-  const pt = up ? (full.G!=null && full.T!=null ? {G:full.T} : {}) : full;   // free upsize: only Grande, charged at the Tall price
+  const p = UI.pick, d = byId[p.id], full = priceTable(d), pr = p.promo && promoById[p.promo], up = pr && pr.upsize;
+  let pt = up ? (full.G!=null && full.T!=null ? {G:full.T} : {}) : full;   // free upsize: only Grande, charged at the Tall price
+  if(pr && pr.size) pt = pt[pr.size]!=null ? {[pr.size]:pt[pr.size]} : {};  // a reward for one size shows only that size
+  const promos = PROMOS.filter(x => !x.drinks || x.drinks.includes(d.id));  // a reward for one drink shows only on that drink
   const topSum = p.tops.reduce((a,t)=>a+topById[t].p,0);
   const series = (SERIES.find(s=>s.id===d.s) || {name:''}).name;
   showOv(`<div class="sh-top"><div><h3>${esc(series)}</h3><h2>${esc(d.n)}</h2></div><button class="x" data-act="closeov" aria-label="Close">×</button></div>
-    <div class="field"><h3>${up?'Free upsize · Grande at the Tall price':'Tap a size to add · add-ons or promo first if needed'}</h3>${up&&!pt.G?'<p class="hint">This drink has no Tall and Grande, so the upsize promo can’t be used on it.</p>':''}<div class="sizes">${Object.keys(pt).map(k=>`<button class="size${k==='G'?' grande':''}" data-act="add" data-size="${k}"><b>${SIZE_NAME[k]}</b><span class="num">${peso(pt[k]+topSum)}</span>${!up&&k==='G'&&pt.T&&pt.G>pt.T?`<small class="num">Only +${peso(pt.G-pt.T)} more</small>`:''}</button>`).join('')}</div></div>
+    <div class="field"><h3>${up?'Free upsize · Grande at the Tall price':'Tap a size to add · add-ons or promo first if needed'}</h3>${up&&!pt.G?'<p class="hint">This drink has no Tall and Grande, so the upsize promo can’t be used on it.</p>':''}${pr&&pr.size?`<p class="hint">${esc(pr.n)}: ${SIZE_NAME[pr.size]} only.</p>`:''}<div class="sizes">${Object.keys(pt).map(k=>`<button class="size${k==='G'?' grande':''}" data-act="add" data-size="${k}"><b>${SIZE_NAME[k]}</b><span class="num">${pr&&pr.free ? (topSum ? 'Free + ' + peso(topSum) : 'FREE') : peso(pt[k]+topSum)}</span>${!up&&k==='G'&&pt.T&&pt.G>pt.T?`<small class="num">Only +${peso(pt.G-pt.T)} more</small>`:''}</button>`).join('')}</div></div>
     <div class="field"><h3>Add-ons</h3><div class="pills">${TOPPINGS.map(t=>`<button class="pill" data-act="ptop" data-id="${esc(t.id)}" aria-pressed="${p.tops.includes(t.id)}">${esc(t.n)} +${t.p}</button>`).join('')}</div></div>
-    <div class="field"><h3>Promo or discount</h3><div class="pills">${PROMOS.map(x=>`<button class="pill" data-act="ppromo" data-id="${esc(x.id)}" aria-pressed="${p.promo===x.id}">${esc(x.n)}</button>`).join('')}</div></div>
+    <div class="field"><h3>Promo or discount</h3><div class="pills">${promos.map(x=>`<button class="pill" data-act="ppromo" data-id="${esc(x.id)}" aria-pressed="${p.promo===x.id}">${esc(x.n)}</button>`).join('')}</div></div>
     ${p.promo==='scpwd'?`<div class="card"><h3>Required for the senior / PWD sales record</h3>
       <div class="seg" role="group" aria-label="Discount type">${['Senior','PWD'].map(t=>`<button data-act="sctype" data-id="${t}" aria-pressed="${p.sc.type===t}">${t==='Senior'?'Senior citizen':'PWD'}</button>`).join('')}</div>
       <div class="field"><label for="scname">Customer’s full name</label><input id="scname" autocomplete="off" value="${esc(p.sc.name)}"></div>
@@ -769,6 +784,8 @@ function addToCart(size, el){
   if(p.promo==='scpwd' && (!p.sc.name.trim() || !p.sc.id.trim())){
     toast('Enter the customer’s name and ID number first'); const f = $(p.sc.name.trim() ? 'scid' : 'scname'); if(f) f.focus(); return;
   }
+  const pr = p.promo && promoById[p.promo];
+  if(pr && ((pr.size && size!==pr.size) || (pr.drinks && !pr.drinks.includes(p.id)))){ toast(pr.n + ' is only for ' + (pr.size ? SIZE_NAME[pr.size] + ' ' : '') + 'the listed drink'); return }
   if(size==='G') celebrate(el, true, 'GRANDE!');
   const l = mkLine(p.id, size, UI.ch, p.tops.slice(), p.promo);
   if(p.promo==='scpwd') l.sc = {type:p.sc.type, name:p.sc.name.trim(), id:p.sc.id.trim()};
@@ -880,7 +897,7 @@ function renderOpen(){
     ${o.crew && !ok ? pinHtml(o, 'opin') : ''}
     ${ok?`<div class="field"><label for="startcash">Count the starting cash in the drawer</label><input id="startcash" class="num" inputmode="decimal" autocomplete="off" placeholder="e.g. 1000" value="${esc(o.cash)}"></div>
       <button class="charge" data-act="oopen" id="obtn" ${o.cash!==''?'':'disabled'}>Open shift</button>`:''}
-    <button class="btn" data-act="clock" style="align-self:flex-start">Time in / out instead</button>
+    <button class="btn" data-act="clock" style="align-self:flex-start">Time in / out (no shift needed)</button>
     ${demoPinHint()}</div>`);
   const sc = $('startcash'); if(sc) sc.focus();
 }
@@ -916,7 +933,8 @@ function renderZ(sh){
     <div class="card"><h3>Product mix</h3><div style="overflow-x:auto"><table class="tbl num"><thead><tr><th>Drink</th><th class="r">Qty</th><th>Sales</th></tr></thead><tbody>
       ${rows(m.mix,([k,v])=>`<tr><td>${esc(k)}</td><td class="r">${v.q}</td><td>${peso(v.amt)}</td></tr>`)}</tbody></table></div></div>
     <div class="card num"><h3>Voids · ${m.voids.length}</h3>${m.voids.map(s=>`<div class="row"><span>#${s.no} · ${esc(s.void.reason)}</span><span>${peso(s.total)}</span></div>`).join('')||'<span class="hint">No voided sales</span>'}</div>
-    <button class="charge" data-act="newshift">Open the next shift</button></div>`);
+    <div class="acts"><button class="charge" data-act="zclock">Time out / time in</button>
+    <button class="btn" data-act="newshift">Open the next shift</button></div></div>`);
 }
 
 // ---- time clock: selfie in/out and breaks, separate from who runs the register ----
@@ -1077,6 +1095,7 @@ document.addEventListener('click', e=>{
     case 'cclose': { const c = parseFloat($('counted').value); const sh = S.shift; sh.counted = c; sh.closedAt = Date.now(); S.shifts.push(sh); S.shift = null; save();
       enqueue({op:'close', id:sh.id, closed_at:iso(sh.closedAt), counted_cash:c});
       renderZ(sh); renderTop(); break }
+    case 'zclock': tc = newPinState({act:null}); renderClock(); break;
     case 'newshift': openState = newPinState({cash:''}); renderOpen(); break;
     case 'ocrew': openState = newPinState({cash:''}); pickCrew(openState, id, renderOpen); break;
     case 'opin': pinKey(openState, b.dataset.k, renderOpen); break;
