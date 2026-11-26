@@ -145,6 +145,8 @@ details summary{cursor:pointer;color:var(--hi);font-size:14px;margin-top:8px}
 .acts{display:flex;gap:6px;flex-wrap:wrap}
 .card > .btn,.card > .primary{margin-top:10px}
 .tag.good{background:var(--good-bg);color:var(--good)} .tag.warn{background:var(--bad-bg);color:var(--bad)}
+.linkbtn{background:none;border:0;padding:4px 0;font:inherit;font-size:13px;font-weight:600;color:var(--hi);text-decoration:underline;cursor:pointer}
+.btnrow [aria-pressed="true"]{background:var(--hi);color:var(--hi-ink);border-color:transparent}
 .secret{display:flex;justify-content:space-between;align-items:center;gap:8px;background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-bottom:8px}
 .secret code{font:600 17px/1.3 ui-monospace,SFMono-Regular,Menlo,monospace;word-break:break-all}
 .secret small{display:block;color:var(--muted);font-size:12px}
@@ -338,7 +340,7 @@ function crunch(sales){
 function renderShell(){
   const hq = V.role==='hq';
   // HQ: Sales · Menu & prices · Stores & people. Franchisee: Sales · Crew (their own stores only).
-  const tabs = hq ? [['sales','Sales'],['menu','Menu & prices'],['stores','Stores & people']] : [['sales','Sales'],['stores','Crew']];
+  const tabs = hq ? [['sales','Sales'],['time','Attendance'],['menu','Menu & prices'],['stores','Stores & people']] : [['sales','Sales'],['time','Attendance'],['stores','Crew']];
   if(!tabs.some(t=>t[0]===V.tab)) V.tab = 'sales';
   const title = (tabs.find(t=>t[0]===V.tab)||tabs[0])[1];
   $('app').innerHTML = `<header class="bar"><div class="brand"><p class="eyebrow">Sago Loco HQ</p><h1>${esc(title)}</h1></div>
@@ -347,7 +349,7 @@ function renderShell(){
     <div id="view"></div>`;
   $('out').onclick = async () => { clearInterval(timer); await sb.auth.signOut(); renderSignin() };
   document.querySelectorAll('[data-tab]').forEach(b => b.onclick = () => { if(V.tab===b.dataset.tab && V.tab==='stores'){ P.sel = null } V.tab = b.dataset.tab; renderShell() });
-  if(V.tab==='menu') showMenu(); else if(V.tab==='stores') showStores(); else showSales();
+  if(V.tab==='menu') showMenu(); else if(V.tab==='stores') showStores(); else if(V.tab==='time') showTime(); else showSales();
 }
 function showSales(){
   const opts = V.stores.length > 1 ? `<option value="all">All stores</option>` : '';
@@ -459,7 +461,7 @@ function renderBody(){
       ${allStores?`<td>${esc(storeName(s.store_id))}</td>`:''}<td class="num">#${s.sale_no}</td><td>${esc(V.crew[s.crew_id]||'—')}</td>
       <td>${esc(CH[s.channel]||s.channel)}${s.pay!==s.channel?' · '+esc(PAY[s.pay]||s.pay):''}</td>
       <td class="items">${(s.sale_lines||[]).map(l=>esc(lineText(l))).join('<br>')}</td>
-      <td class="r num">${peso(Number(s.total))}${s.voided_at?`<div><span class="tag warn">Voided</span></div><div class="muted">${esc(s.void_reason||'')}</div>`:''}</td></tr>`;
+      <td class="r num">${peso(Number(s.total))}${s.voided_at?`<div><span class="tag warn">Voided</span></div><div class="muted">${esc(s.void_reason||'')}</div>`:`<div><button class="linkbtn" data-void="${esc(s.id)}">Void</button></div>`}</td></tr>`;
 
   $('body').innerHTML = `<div class="grid">
     <div class="card hero span12">${head}
@@ -495,6 +497,147 @@ function renderBody(){
     </div></div>`;
   bindCharts(charts);
   if($('txmore')) $('txmore').onclick = () => { V.txLimit += 100; renderBody() };
+  document.querySelectorAll('[data-void]').forEach(b => b.onclick = () => openVoid(b.dataset.void));
+}
+
+// ---------- void from the office (HQ: any store; franchisee: own stores). The database stamps the time and who did it,
+// refuses anything but the void fields, and a void can never be undone. The store tablet picks it up within 5 minutes.
+const VOID_REASONS = ['Wrong item','Customer cancelled','Duplicate entry','Training / test'];
+function openVoid(id){
+  const s = (V.data||[]).find(x=>x.id===id); if(!s) return;
+  let reason = null;
+  openSheet('Void sale #' + s.sale_no, `<p><b>${esc(storeName(s.store_id))}</b> · ${esc(fmtD(dateOf(s.created_at)))} ${esc(timePH(s.created_at))} · ${esc(V.crew[s.crew_id]||'—')} · ${esc(CH[s.channel]||s.channel)}</p>
+    <p class="muted">${(s.sale_lines||[]).map(l=>esc(lineText(l))).join('<br>')}</p>
+    <p><b>${peso(Number(s.total))}</b> will be taken out of the sales totals. A void can’t be undone.</p>
+    <div class="field"><label>Reason</label><div class="btnrow" id="v_reasons">${VOID_REASONS.map(r=>`<button class="btn" data-r="${esc(r)}" aria-pressed="false">${esc(r)}</button>`).join('')}</div></div>
+    <div class="btnrow"><button class="btn" id="s_no">Cancel</button><button class="primary" id="v_yes" style="background:var(--bad);color:#fff" disabled>Void this sale</button></div>`);
+  $('s_no').onclick = closeEditor;
+  $('v_reasons').onclick = e => { const b = e.target.closest('[data-r]'); if(!b) return; reason = b.dataset.r;
+    $('v_reasons').querySelectorAll('[data-r]').forEach(x => x.setAttribute('aria-pressed', x===b)); $('v_yes').disabled = false };
+  busy($('v_yes'), 'Voiding…', async () => {
+    if(!reason) throw new Error('Pick a reason first.');
+    const r = await sb.from('sales').update({voided_at: new Date().toISOString(), void_reason: reason + ' · office'}).eq('id', id).is('voided_at', null).select('id');
+    if(r.error) throw new Error(r.error.message.includes('reason') ? 'Pick a reason first.' : NET);
+    if(!r.data || !r.data.length) throw new Error('This sale was already voided, or your login can’t void it. Refresh and check.');
+    closeEditor(); load();
+  });
+}
+
+// ---------- attendance (HQ: all stores; franchisee: own stores). Read-only: punches can't be edited by anyone. ----------
+const T = {from:null, to:null, store:'all', rows:null, people:null, loading:false};
+const PUNCH = {in:'Time in', bstart:'Break start', bend:'Break end', out:'Time out'};
+const clock = iso => iso ? timePH(iso) : '—';
+const hrs = ms => ms > 0 ? (Math.round(ms/36e5*100)/100) : 0;
+function showTime(){
+  const today = phDate();
+  if(!T.from){ T.from = monday(today); T.to = today }
+  if(V.stores.length <= 1 && V.stores[0]) T.store = V.stores[0].id;
+  const opts = V.stores.length > 1 ? `<option value="all">All stores</option>` : '';
+  $('view').innerHTML = `<div class="filters">
+      <select id="t_store" aria-label="Store">${opts}${V.stores.map(s=>`<option value="${s.id}">${esc(s.name)}</option>`).join('')}</select>
+      <div class="seg" role="group" aria-label="Quick dates"><button data-q="today">Today</button><button data-q="week">This week</button><button data-q="lastweek">Last week</button><button data-q="month">This month</button></div>
+      <div class="datebox"><label class="muted" for="t_from">From</label><input type="date" id="t_from" value="${T.from}" max="${today}">
+        <label class="muted" for="t_to">to</label><input type="date" id="t_to" value="${T.to}" max="${today}"></div>
+      <button class="btn" id="t_dl">⬇ Download (Excel)</button>
+    </div>
+    <div id="body"><p class="empty">Loading attendance…</p></div>`;
+  $('t_store').value = T.store;
+  $('t_store').onchange = e => { T.store = e.target.value; loadTime() };
+  $('t_from').onchange = e => { if(e.target.value){ T.from = e.target.value; loadTime() } };
+  $('t_to').onchange = e => { if(e.target.value){ T.to = e.target.value; loadTime() } };
+  document.querySelectorAll('[data-q]').forEach(b => b.onclick = () => {
+    const q = b.dataset.q, t = phDate();
+    if(q==='today'){ T.from = t; T.to = t }
+    else if(q==='week'){ T.from = monday(t); T.to = t }
+    else if(q==='lastweek'){ T.from = addDays(monday(t),-7); T.to = addDays(monday(t),-1) }
+    else { T.from = t.slice(0,8)+'01'; T.to = t }
+    $('t_from').value = T.from; $('t_to').value = T.to; loadTime() });
+  $('t_dl').onclick = downloadTime;
+  loadTime();
+}
+async function loadTime(){
+  if(T.to < T.from){ const x = T.from; T.from = T.to; T.to = x }
+  const seq = (T.seq = (T.seq||0) + 1);
+  $('body').classList.add('skel');
+  try{
+    const out = [];
+    for(let i=0;;i+=1000){
+      let q = sb.from('time_logs').select('id,store_id,crew_id,type,at,flag,offline,photo_path')
+        .gte('at', T.from+'T00:00:00+08:00').lt('at', addDays(T.to,1)+'T00:00:00+08:00').order('at').range(i, i+999);
+      if(T.store!=='all') q = q.eq('store_id', T.store);
+      const r = await q; if(r.error) throw r.error;
+      out.push(...r.data); if(r.data.length < 1000) break;
+    }
+    if(seq !== T.seq) return;
+    T.rows = attendanceDays(out); drawTime();
+  }catch(e){ if(seq === T.seq) $('body').innerHTML = `<div class="callout">Couldn’t load attendance. Check the internet and try again.</div>` }
+  finally{ if(seq === T.seq && $('body')) $('body').classList.remove('skel') }
+}
+// one row per person per day: first time-in, break, last time-out, hours worked (break taken out)
+function attendanceDays(logs){
+  const days = {};
+  logs.forEach(l => {
+    const k = l.crew_id + '|' + dateOf(l.at) + '|' + l.store_id;
+    const d = days[k] = days[k] || {crew:l.crew_id, date:dateOf(l.at), store:l.store_id, in:null, bstart:null, bend:null, out:null, photos:[], flags:new Set()};
+    if(l.type==='in' && !d.in) d.in = l.at;
+    if(l.type==='bstart' && !d.bstart) d.bstart = l.at;
+    if(l.type==='bend') d.bend = l.at;
+    if(l.type==='out') d.out = l.at;
+    if(l.photo_path) d.photos.push({type:l.type, at:l.at, path:l.photo_path});
+    if(l.flag==='offline' || l.offline) d.flags.add('Punched offline (phone time)');
+    if(l.flag==='clock') d.flags.add('Tablet clock was off (phone time)');
+  });
+  return Object.values(days).map(d => {
+    if(!d.in) d.flags.add('No time-in');
+    if(!d.out) d.flags.add(d.date===phDate() ? 'Still on shift' : 'No time-out');
+    if(d.bstart && !d.bend) d.flags.add('Break not ended');
+    const brk = d.bstart && d.bend ? Date.parse(d.bend) - Date.parse(d.bstart) : 0;
+    d.breakMin = Math.round(brk/6e4);
+    d.hours = d.in && d.out ? hrs(Date.parse(d.out) - Date.parse(d.in) - brk) : 0;
+    d.flags = [...d.flags];
+    return d;
+  }).sort((a,b) => a.date===b.date ? (V.crew[a.crew]||'').localeCompare(V.crew[b.crew]||'') : b.date.localeCompare(a.date));
+}
+function drawTime(){
+  const rows = T.rows || [], allStores = T.store==='all' && V.stores.length > 1;
+  const per = {};
+  rows.forEach(d => { const p = per[d.crew] = per[d.crew] || {days:0, hours:0, flags:0}; p.days++; p.hours += d.hours; p.flags += d.flags.filter(f=>f!=='Still on shift').length });
+  const label = T.from===T.to ? fmtD(T.from,{weekday:'long', month:'short', day:'numeric', year:'numeric'}) : fmtD(T.from) + ' – ' + fmtD(T.to,{month:'short', day:'numeric', year:'numeric'});
+  const people = Object.entries(per).sort((a,b)=>(V.crew[a[0]]||'').localeCompare(V.crew[b[0]]||''));
+  $('body').innerHTML = `<div class="grid">
+    <div class="card span12"><div class="sec" style="margin:0 0 8px"><h2 style="margin:0">Summary · ${esc(label)}</h2><span class="muted">Hours = time-in to time-out, minus the break</span></div>
+      ${people.length ? `<div class="tablewrap"><table><thead><tr><th>Name</th><th class="r">Days</th><th class="r">Hours</th><th class="r">Needs checking</th></tr></thead><tbody>
+      ${people.map(([c,p])=>`<tr><td>${esc(V.crew[c]||'—')}</td><td class="r num">${p.days}</td><td class="r num">${p.hours.toFixed(2)}</td><td class="r num">${p.flags?`<span class="tag warn">${p.flags}</span>`:'—'}</td></tr>`).join('')}</tbody></table></div>`
+      : '<p class="empty">No time-ins in these dates.</p>'}</div>
+    ${rows.length ? `<div class="card span12"><h2>Daily records</h2><div class="tablewrap"><table class="tx"><thead><tr><th>Date</th><th>Name</th>${allStores?'<th>Store</th>':''}<th>In</th><th>Break</th><th>Out</th><th class="r">Hours</th><th>Notes</th><th>Selfies</th></tr></thead><tbody>
+      ${rows.map((d,i)=>`<tr><td class="num">${esc(fmtD(d.date,{weekday:'short', month:'short', day:'numeric'}))}</td><td>${esc(V.crew[d.crew]||'—')}</td>${allStores?`<td>${esc(storeName(d.store))}</td>`:''}
+        <td class="num">${clock(d.in)}</td><td class="num">${d.bstart?clock(d.bstart)+' – '+clock(d.bend)+(d.bend?` <span class="muted">(${d.breakMin} min)</span>`:''):'—'}</td><td class="num">${clock(d.out)}</td>
+        <td class="r num">${d.hours?d.hours.toFixed(2):'—'}</td><td>${d.flags.map(f=>`<span class="tag ${f==='Still on shift'?'':'warn'}" style="margin:0 4px 4px 0">${esc(f)}</span>`).join('')}</td>
+        <td>${d.photos.length?`<button class="linkbtn" data-ph="${i}">View ${d.photos.length}</button>`:'<span class="muted">—</span>'}</td></tr>`).join('')}
+      </tbody></table></div><p class="muted" style="margin-top:8px">Times come from the database clock, not the tablet, unless a note says otherwise. Selfies are kept for 90 days.</p></div>` : ''}
+  </div>`;
+  document.querySelectorAll('[data-ph]').forEach(b => b.onclick = () => showSelfies(T.rows[+b.dataset.ph]));
+}
+async function showSelfies(d){
+  openSheet((V.crew[d.crew]||'Crew') + ' · ' + fmtD(d.date,{weekday:'short', month:'short', day:'numeric'}), '<p class="empty">Loading photos…</p><div id="ph_list"></div>');
+  const r = await sb.storage.from('selfies').createSignedUrls(d.photos.map(p=>p.path), 300);
+  const box = $('ph_list'); if(!box) return;
+  box.previousElementSibling.remove();
+  if(r.error){ box.innerHTML = '<div class="callout">Couldn’t load the photos. Older than 90 days are deleted automatically.</div>'; return }
+  box.innerHTML = `<div style="display:flex;flex-wrap:wrap;gap:12px">${d.photos.map((p,i)=>{ const u = r.data[i] && r.data[i].signedUrl;
+    return `<figure style="margin:0;width:160px"><div style="width:160px;height:213px;border-radius:12px;background:var(--surface-2);overflow:hidden;display:grid;place-items:center">${u?`<img src="${esc(u)}" alt="${esc(PUNCH[p.type])} selfie" style="width:100%;height:100%;object-fit:cover">`:'<span class="muted" style="padding:10px;text-align:center">Photo not available</span>'}</div>
+      <figcaption class="muted" style="margin-top:4px">${esc(PUNCH[p.type]||p.type)} · ${clock(p.at)}</figcaption></figure>` }).join('')}</div>`;
+}
+async function downloadTime(){
+  const rows = T.rows || [];
+  if(!rows.length){ openSheet('Download attendance', '<p>No time-ins in these dates.</p>'); return }
+  const data = rows.slice().reverse().map(d => ({'Date':d.date, 'Name':V.crew[d.crew]||'', 'Store':storeName(d.store), 'Time in':d.in?clock(d.in):'', 'Break start':d.bstart?clock(d.bstart):'',
+    'Break end':d.bend?clock(d.bend):'', 'Break (min)':d.breakMin||'', 'Time out':d.out?clock(d.out):'', 'Hours':d.hours||'', 'Notes':d.flags.join('; ')}));
+  const st = T.store==='all' ? 'All stores' : storeName(T.store);
+  const base = ('SagoLoco Attendance ' + st + ' ' + (T.from===T.to ? T.from : T.from + ' to ' + T.to)).replace(/[^\w\- ]+/g,'').replace(/\s+/g,'_');
+  try{ await loadXLSX() }catch(_){ saveBlob(new Blob([toCSV(data)], {type:'text/csv;charset=utf-8'}), base + '.csv'); return }
+  const wb = XLSX.utils.book_new(), ws = XLSX.utils.json_to_sheet(data);
+  ws['!cols'] = [11,22,18,9,11,10,10,9,7,40].map(w=>({wch:w})); XLSX.utils.book_append_sheet(wb, ws, 'Attendance'); XLSX.writeFile(wb, base + '.xlsx');
 }
 
 // ---------- download (B-20): what's on screen, as Excel (3 sheets) or CSV ----------

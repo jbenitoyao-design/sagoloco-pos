@@ -538,6 +538,19 @@ function renderStale(){
     <button class="charge" data-act="staleclose">Yes, close it now</button>
     <button class="btn" data-act="stalekeep" style="align-self:flex-start">No, keep using it</button></div>`);
 }
+// a sale voided from the office (HQ or franchisee) shows as voided here too, so the Z report and cash count match the database
+async function pullOfficeVoids(){
+  if(MODE!=='live' || !sb || !navigator.onLine || !S.shift) return;
+  const mine = S.sales.filter(x => x.shiftId===S.shift.id && !x.void);
+  if(!mine.length) return;
+  try{
+    const r = await sb.from('sales').select('id,voided_at,void_reason').eq('shift_id', S.shift.id).not('voided_at','is',null);
+    if(r.error) return;
+    let n = 0;
+    r.data.forEach(v => { const x = mine.find(m => m.id===v.id); if(x){ x.void = {reason:v.void_reason, at:Date.parse(v.voided_at), by:null}; n++ } });
+    if(n){ save(); if(!UI.pay && $('screen').hidden) renderAll(); toast(n===1 ? 'The office voided 1 sale' : 'The office voided ' + n + ' sales') }
+  }catch(_){}
+}
 // if HQ closed this tablet's shift (e.g. a forgotten test shift), follow the database instead of
 // ringing more sales onto a closed shift
 async function checkShiftClosedByHQ(){
@@ -1000,7 +1013,7 @@ document.addEventListener('click', e=>{
     case 'vconfirm': { const s = S.sales.find(x=>x.id===UI.voiding); s.void = {reason:UI.vreason, at:Date.now(), by:S.shift.crewId}; save();
       enqueue({op:'void', id:s.id, voided_at:iso(s.void.at), void_reason:s.void.reason, voided_by:s.void.by});
       UI.voiding = null; toast('Sale #' + s.no + ' voided'); renderSales(); renderTop(); break }
-    case 'close': closeOv(); if(S.shift){ if(UI.cart.length){ toast('Finish or clear the current order first'); return } renderClose('') } break;
+    case 'close': closeOv(); if(S.shift){ if(UI.cart.length){ toast('Finish or clear the current order first'); return } pullOfficeVoids().finally(()=>renderClose('')) } break;
     case 'closescreen': closeScreen(); break;
     case 'staleclose': if(S.shift) renderClose(''); break;
     case 'stalekeep': if(S.shift) UI.staleKept = S.shift.id; closeScreen(); break;
@@ -1058,7 +1071,7 @@ document.addEventListener('change', e=>{ if(e.target.id==='selfie' && e.target.f
 addEventListener('online', ()=>{ renderSync(); refreshCatalog(); sync() });
 addEventListener('offline', renderSync);
 setInterval(()=>{ sync() }, 20000);
-setInterval(async ()=>{ refreshCatalog(); cleanOldSelfies(); if(!(await checkShiftClosedByHQ())) maybeAskStale() }, 5*60000);
+setInterval(async ()=>{ refreshCatalog(); cleanOldSelfies(); pullOfficeVoids(); if(!(await checkShiftClosedByHQ())) maybeAskStale() }, 5*60000);
 
 // ---- start: a set-up tablet opens straight to its store; otherwise HQ sets it up (or tries the demo) ----
 function startPreview(){
@@ -1078,7 +1091,7 @@ function startPreview(){
   if(live && live.storeId && mode==='live' && (session || !navigator.onLine)){
     MODE = 'live'; S = live; S.outbox = S.outbox||[]; S.failed = S.failed||[]; S.pinCache = S.pinCache||{}; S.time = S.time||[];
     if(S.catalog) applyLiveCatalog(S.catalog);
-    prune(); save(); renderAll(); refreshCatalog(); sync(); cleanOldSelfies();
+    prune(); save(); renderAll(); refreshCatalog(); sync(); cleanOldSelfies(); pullOfficeVoids();
     if(!(await checkShiftClosedByHQ())) maybeAskStale(true);
     return;
   }
