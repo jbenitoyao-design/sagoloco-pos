@@ -56,7 +56,7 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--ube);outline-of
 .top .spacer{flex:1}
 .btn{padding:10px 14px;min-height:44px;border-radius:10px;font-weight:700;background:var(--surface);border:1px solid var(--line)}
 .btn:hover{border-color:var(--muted)}
-.btn.cog{width:46px;height:46px;padding:0;display:inline-flex;align-items:center;justify-content:center}
+.btn.cog{min-height:46px;padding:0 14px 0 12px;display:inline-flex;align-items:center;justify-content:center;gap:8px;white-space:nowrap}
 .mitem{width:100%;text-align:left;padding:16px;border-radius:14px;border:1px solid var(--line);background:var(--surface);font-weight:700;font-size:17px;display:flex;flex-direction:column;gap:2px}
 .mitem small{font-weight:500;font-size:13px;color:var(--muted)}
 .btn.primary{background:var(--accent);color:var(--accent-ink);border-color:transparent}
@@ -215,7 +215,7 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--ube);outline-of
     <span class="chip" id="syncChip"><i class="dot"></i>Starting…</span>
     <span class="chip demo" id="demoChip" hidden>Demo data</span>
     <span class="spacer"></span>
-    <button class="btn cog" data-act="menu" aria-label="Settings and shift tools"><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path fill="currentColor" d="M19.4 13a7.6 7.6 0 0 0 0-2l2.1-1.6-2-3.5-2.5 1a7.4 7.4 0 0 0-1.7-1L15 3h-4l-.3 2.9a7.4 7.4 0 0 0-1.7 1l-2.5-1-2 3.5L6.6 11a7.6 7.6 0 0 0 0 2l-2.1 1.6 2 3.5 2.5-1c.5.4 1.1.7 1.7 1L11 21h4l.3-2.9c.6-.3 1.2-.6 1.7-1l2.5 1 2-3.5L19.4 13ZM13 15.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7Z" transform="translate(-1 0)"/></svg></button>
+    <button class="btn cog" data-act="menu" title="Shift tools: time in/out, today’s sales, void, close shift"><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path fill="currentColor" d="M19.4 13a7.6 7.6 0 0 0 0-2l2.1-1.6-2-3.5-2.5 1a7.4 7.4 0 0 0-1.7-1L15 3h-4l-.3 2.9a7.4 7.4 0 0 0-1.7 1l-2.5-1-2 3.5L6.6 11a7.6 7.6 0 0 0 0 2l-2.1 1.6 2 3.5 2.5-1c.5.4 1.1.7 1.7 1L11 21h4l.3-2.9c.6-.3 1.2-.6 1.7-1l2.5 1 2-3.5L19.4 13ZM13 15.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7Z" transform="translate(-1 0)"/></svg><span>Void · Close shift</span></button>
   </header>
   <div class="main">
     <section class="menu" aria-label="Menu">
@@ -238,7 +238,7 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--ube);outline-of
 const SB_URL = 'https://fsdaiiazdnkmsqwyxrcj.supabase.co';
 const SB_KEY = 'sb_publishable_qv46qcVUERE-2ivDDbKKAA_eU7QZcS6';
 // bump on every deploy: HQ shows which version each store tablet runs (v14 check-in)
-const APP_VERSION = '2026-11-26.10';
+const APP_VERSION = '2026-11-26.11';
 // look-only preview opened from HQ (pos.sagoloco.com/?preview): real menu, no database, nothing saved on this device
 const PREVIEW = new URLSearchParams(location.search).has('preview'), KEY_PREVIEW = 'slpos.preview.catalog';
 let sb = null;
