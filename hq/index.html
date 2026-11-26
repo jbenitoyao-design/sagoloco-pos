@@ -148,6 +148,9 @@ details summary{cursor:pointer;color:var(--hi);font-size:14px;margin-top:8px}
 .acts{display:flex;gap:6px;flex-wrap:wrap}
 .card > .btn,.card > .primary{margin-top:10px}
 .tag.good{background:var(--good-bg);color:var(--good)} .tag.warn{background:var(--bad-bg);color:var(--bad)}
+/* andon (C-16): one light per store, same colors as the tablet's bar */
+.andon{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:8px;vertical-align:middle;background:var(--line)}
+.andon.ok{background:var(--good)} .andon.wait{background:var(--accent)} .andon.bad{background:var(--bad)}
 .linkbtn{background:none;border:0;padding:4px 0;font:inherit;font-size:13px;font-weight:600;color:var(--hi);text-decoration:underline;cursor:pointer}
 .btnrow [aria-pressed="true"]{background:var(--hi);color:var(--hi-ink);border-color:transparent}
 .secret{display:flex;justify-content:space-between;align-items:center;gap:8px;background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-bottom:8px}
@@ -1109,6 +1112,20 @@ async function showStores(){
   if(!hq && P.stores.length===1) P.sel = P.stores[0].id;   // a franchisee with one store goes straight to it
   drawStores();
 }
+// andon (C-16): the store's light from its tablet check-ins (every 5 min while online).
+// red = a sale was refused, or sales were waiting when the tablet went quiet (>15 min); amber = sales waiting to send;
+// green = checked in within 15 min with nothing waiting; grey = quiet with nothing waiting (closed or tablet off: nothing at risk)
+function andonOf(devs){
+  if(!devs.length) return {c:'', t:'No tablet check-in yet'};
+  const quiet = d => Date.now() - Date.parse(d.last_seen) > 15*6e4;
+  if(devs.some(d => d.failed_n > 0)) return {c:'bad', t:'Sales couldn’t sync · see Tablet check-in'};
+  if(devs.some(d => d.outbox_n > 0 && quiet(d))) return {c:'bad', t:'Sales waiting on a tablet that went quiet'};
+  if(devs.some(d => d.outbox_n > 0)) return {c:'wait', t:'Sales waiting to send'};
+  if(devs.some(d => !quiet(d))) return {c:'ok', t:'All synced'};
+  return {c:'', t:'Quiet · tablet off or store closed'};
+}
+const storeDevs = id => (P.devices||[]).filter(d=>d.store_id===id).sort((a,b)=>b.last_seen.localeCompare(a.last_seen));
+const andonDot = a => `<i class="andon ${a.c}" title="${esc(a.t)}" aria-label="${esc(a.t)}" role="img"></i>`;
 const wideStores = () => innerWidth >= 900 && P.stores.length > 0;
 function drawStores(){
   if(V.tab!=='stores' || !$('view')) return;
@@ -1132,7 +1149,7 @@ function renderStoreList(el){
       bits.push(!tab ? 'No tablet login yet' : tab.off ? 'Tablet turned off' : 'Tablet login ready');
     }
     bits.push(n + ' crew');
-    return `<button class="item ${s.active?'':'off'}" data-store="${s.id}" ${wide && s.id===P.sel ? 'aria-current="true"' : ''}><div><div class="nm">${esc(s.name)}<span class="tag">${esc(s.code)}</span>${s.active?'':'<span class="tag">Closed</span>'}</div>
+    return `<button class="item ${s.active?'':'off'}" data-store="${s.id}" ${wide && s.id===P.sel ? 'aria-current="true"' : ''}><div><div class="nm">${andonDot(andonOf(storeDevs(s.id)))}${esc(s.name)}<span class="tag">${esc(s.code)}</span>${s.active?'':'<span class="tag">Closed</span>'}</div>
       <div class="pr">${bits.map(esc).join(' · ')}</div></div><span class="chev">›</span></button>`;
   };
   el.innerHTML = `${P.msg && !wide?`<div class="okmsg">${esc(P.msg)}</div>`:''}
@@ -1165,13 +1182,13 @@ function renderStore(el){
       <button class="btn" id="addFr">+ Add franchisee</button></div>`;
 
   // tablet check-in (v14): which app version the counter tablet runs, and when it last checked in
-  const devs = (P.devices||[]).filter(d=>d.store_id===s.id).sort((a,b)=>b.last_seen.localeCompare(a.last_seen));
+  const devs = storeDevs(s.id), light = andonOf(devs);
   const devRow = d => { const mins = Math.round((Date.now() - Date.parse(d.last_seen))/6e4), old = P.latest && d.app_version !== P.latest;
     return `<div class="row"><span class="l">${devs.length>1 ? 'Tablet …' + esc(d.device_id.slice(-4)) : 'Tablet'}</span><span class="r">App ${esc(d.app_version||'?')}
       ${old ? '<span class="tag warn">Old version · reopen the app</span>' : P.latest ? '<span class="tag good">Latest</span>' : ''}<br>
       <span class="muted">${mins < 2 ? 'Checked in just now' : mins < 60 ? 'Checked in ' + mins + ' min ago' : 'Last checked in ' + when(d.last_seen)}${d.outbox_n ? ' · ' + d.outbox_n + ' waiting to sync' : ''}${d.failed_n ? ' · <b>' + d.failed_n + ' couldn’t sync</b>' : ''}</span>${d.last_error ? '<br><span class="muted">Latest problem: ' + esc(d.last_error) + '</span>' : ''}</span></div>`;
   };
-  const devCard = `<div class="card" id="store-devices"><h2>Tablet check-in</h2>${devs.length ? devs.slice(0,3).map(devRow).join('') : '<p class="muted">No check-in yet. The tablet reports every 5 minutes while it’s online with the latest app.</p>'}</div>`;
+  const devCard = `<div class="card" id="store-devices"><h2>Tablet check-in</h2>${devs.length ? `<p>${andonDot(light)}<b>${esc(light.t)}</b></p>` + devs.slice(0,3).map(devRow).join('') : '<p class="muted">No check-in yet. The tablet reports every 5 minutes while it’s online with the latest app.</p>'}</div>`;
   const tabCard = !hq ? '' : `<div class="card" id="store-tablet"><h2>Store tablet</h2>
       ${tab ? `<div class="person ${tab.off?'offp':''}"><div><b>${esc(tab.email)}</b>
           <div class="muted">${tab.off ? 'Turned off: this tablet can’t sign in or sync' : tab.signed_in_at ? 'Set up · last signed in ' + when(tab.signed_in_at) : '<span class="tag warn">Not set up on a tablet yet</span>'}</div></div>

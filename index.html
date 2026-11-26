@@ -52,6 +52,12 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--ube);outline-of
 .dot{width:8px;height:8px;border-radius:50%;background:var(--good)}
 .dot.off{background:var(--accent)}
 .dot.bad{background:var(--bad)}
+/* andon (C-16): thin light across the top; green = all sent, amber = waiting/offline, red = stuck or refused */
+.andon{flex:none;height:6px;margin-left:calc(-1 * max(16px,env(safe-area-inset-left,0px)));margin-right:calc(-1 * max(16px,env(safe-area-inset-right,0px)));background:var(--good);transition:background .3s}
+.andon.wait{background:var(--accent)} .andon.idle{background:var(--line)}
+.andon.bad{background:var(--bad);animation:andon 1.2s ease-in-out infinite}
+@keyframes andon{50%{opacity:.35}}
+.chip.bad{background:var(--bad-bg);color:var(--bad)}
 .eyebrow{margin:0 0 6px;color:var(--muted);font-size:12px;letter-spacing:.08em;text-transform:uppercase}
 .top .spacer{flex:1}
 .btn{padding:10px 14px;min-height:44px;border-radius:10px;font-weight:700;background:var(--surface);border:1px solid var(--line)}
@@ -204,10 +210,11 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--ube);outline-of
   .kpis{grid-template-columns:repeat(2,1fr)}
 }
 @media (max-width:520px){.top .hide-sm{display:none}}
-@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}.andon.bad{animation:none}}
 </style>
 
 <div id="app">
+  <div class="andon idle" id="andon" aria-hidden="true"></div>
   <header class="top">
     <div class="brand">Sago Loco POS<small id="storeName">Karuhatan</small></div>
     <span class="chip" id="shiftChip"></span>
@@ -238,7 +245,7 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--ube);outline-of
 const SB_URL = 'https://fsdaiiazdnkmsqwyxrcj.supabase.co';
 const SB_KEY = 'sb_publishable_qv46qcVUERE-2ivDDbKKAA_eU7QZcS6';
 // bump on every deploy: HQ shows which version each store tablet runs (v14 check-in)
-const APP_VERSION = '2026-11-26.12';
+const APP_VERSION = '2026-11-26.13';
 // look-only preview opened from HQ (pos.sagoloco.com/?preview): real menu, no database, nothing saved on this device
 const PREVIEW = new URLSearchParams(location.search).has('preview'), KEY_PREVIEW = 'slpos.preview.catalog';
 let sb = null;
@@ -397,7 +404,7 @@ function toast(msg){ const t = $('toast'); t.textContent = msg; t.hidden = false
 // Every sale, void, shift and time log is saved on the tablet first, then sent in order.
 // Each record carries an id made here, so sending it twice never creates a duplicate.
 let syncing = false;
-function enqueue(op){ if(MODE!=='live') return; S.outbox.push(op); save(); renderSync(); sync() }
+function enqueue(op){ if(MODE!=='live') return; if(!S.outbox.length) S.waitSince = Date.now(); S.outbox.push(op); save(); renderSync(); sync() }
 async function pushOp(op){
   let r;
   if(op.op==='shift') r = await sb.from('shifts').upsert(op.row, {onConflict:'id', ignoreDuplicates:true});
@@ -463,22 +470,28 @@ async function sync(){
         if(isPermanent(err)){ S.failed.push(Object.assign({}, op, {error: String(err.message || err.code)})); S.outbox.shift(); save(); continue }
         break;
       }
-      S.outbox.shift(); S.lastSync = Date.now(); save();
+      S.outbox.shift(); S.lastSync = S.waitSince = Date.now(); save();
     }
   }catch(_){ /* offline mid-send: the rest waits for the next try */ }
   finally{ syncing = false; renderSync() }
 }
+// Andon (C-16): the bar and the chip tell the same story. "Stuck" = online, sales waiting, nothing sent for 10 min
+// (e.g. the tablet login expired) — the silent failure the bar exists to catch.
+const STUCK_MS = 10*60000;
 function renderSync(){
-  const el = $('syncChip'); if(!el) return;
-  if(MODE==='preview'){ el.innerHTML = '<i class="dot off"></i>Preview · nothing is saved'; return }
-  if(MODE!=='live'){ el.innerHTML = '<i class="dot off"></i>Demo · this device only'; return }
+  const el = $('syncChip'), bar = $('andon'); if(!el) return;
+  const show = (state, txt) => { el.className = 'chip' + (state==='bad' ? ' bad' : ''); el.innerHTML = `<i class="dot${state==='bad'?' bad':state==='wait'||state==='idle'?' off':''}"></i>${txt}`; if(bar){ bar.className = 'andon' + (state==='ok' ? '' : ' ' + state); bar.title = txt } };
+  if(MODE==='preview') return show('idle', 'Preview · nothing is saved');
+  if(MODE!=='live') return show('idle', 'Demo · this device only');
   const n = S.outbox.length, f = (S.failed||[]).length, on = navigator.onLine;
-  let txt, cls = '';
-  if(f){ txt = f + ' couldn’t sync · tell HQ'; cls = ' bad' }
-  else if(!on){ txt = n ? 'Offline · ' + n + ' waiting' : 'Offline · still saving'; cls = ' off' }
-  else if(n){ txt = 'Syncing ' + n + '…'; cls = ' off' }
-  else txt = 'All synced';
-  el.innerHTML = `<i class="dot${cls}"></i>${txt}`;
+  if(n && !S.waitSince) S.waitSince = Date.now();   // queue saved by an older app version
+  if(!n) S.waitSince = 0;
+  const stuckMin = n && on ? Math.floor((Date.now() - S.waitSince) / 60000) : 0;
+  if(f) return show('bad', f + ' couldn’t sync · tell HQ');
+  if(stuckMin * 60000 >= STUCK_MS) return show('bad', 'Not sending for ' + stuckMin + ' min · tell HQ');
+  if(!on) return show('wait', n ? 'Offline · ' + n + ' waiting' : 'Offline · still saving');
+  if(n) return show('wait', 'Syncing ' + n + '…');
+  show('ok', 'All synced');
 }
 
 // ---- live mode: tablet login + HQ's menu and crew ----
@@ -553,6 +566,7 @@ function lastError(){
   const f = (S.failed||[]).slice(-1)[0], parts = [];
   if(JS_ERR) parts.push('App error ' + fmtTime(JS_ERR.at) + ': ' + JS_ERR.msg);
   if(f) parts.push('Not synced (' + f.op + '): ' + f.error);
+  if(S.outbox.length && S.waitSince && Date.now() - S.waitSince >= STUCK_MS) parts.push(S.outbox.length + ' waiting, nothing sent for ' + Math.floor((Date.now() - S.waitSince)/60000) + ' min');
   return parts.length ? parts.join(' | ').slice(0, 500) : null;
 }
 // check-in: tells HQ this tablet's app version and sync backlog; the database stamps the time. Never blocks anything.
@@ -1138,7 +1152,7 @@ document.addEventListener('keydown', e=>{
   if(e.key==='Enter' && e.target.id==='tendered' && !$('cpl').disabled){ e.preventDefault(); askScratch() }
 });
 document.addEventListener('change', e=>{ if(e.target.id==='selfie' && e.target.files[0]) saveSelfie(e.target.files[0]) });
-addEventListener('online', ()=>{ renderSync(); refreshCatalog(); sync(); checkIn() });
+addEventListener('online', ()=>{ if(MODE==='live' && S.outbox.length) S.waitSince = Date.now(); renderSync(); refreshCatalog(); sync(); checkIn() });
 addEventListener('offline', renderSync);
 setInterval(()=>{ sync() }, 20000);
 setInterval(async ()=>{ refreshCatalog(); cleanOldSelfies(); pullOfficeVoids(); checkIn(); if(!(await checkShiftClosedByHQ())) maybeAskStale() }, 5*60000);
