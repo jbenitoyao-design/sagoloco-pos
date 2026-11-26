@@ -249,7 +249,7 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--ube);outline-of
 const SB_URL = 'https://fsdaiiazdnkmsqwyxrcj.supabase.co';
 const SB_KEY = 'sb_publishable_qv46qcVUERE-2ivDDbKKAA_eU7QZcS6';
 // bump on every deploy: HQ shows which version each store tablet runs (v14 check-in)
-const APP_VERSION = '2026-11-26.15';
+const APP_VERSION = '2026-11-26.16';
 // look-only preview opened from HQ (pos.sagoloco.com/?preview): real menu, no database, nothing saved on this device
 const PREVIEW = new URLSearchParams(location.search).has('preview'), KEY_PREVIEW = 'slpos.preview.catalog';
 let sb = null;
@@ -378,6 +378,8 @@ function seed(){
 }
 
 // ---- money ----
+// poka-yoke (C-18): every cash box reads "1,500" or "₱1 500" as 1500 (parseFloat alone read it as ₱1); negative or junk = not a number
+const amt = v => { const n = Number(String(v ?? '').replace(/[₱,\s]/g, '')); return String(v ?? '').trim() !== '' && isFinite(n) && n >= 0 ? n : NaN };
 const peso = n => '₱' + (Math.round(n*100)/100).toLocaleString('en-PH',{minimumFractionDigits:0,maximumFractionDigits:2});
 function lineAmt(l){
   const gross = (l.base + l.top) * l.qty;
@@ -865,7 +867,7 @@ function incLine(i){
 function openPay(){ UI.pay = {method: UI.ch==='walkin' ? 'cash' : UI.ch, tendered:''}; renderPay() }
 function renderPay(){
   const t = totals(UI.cart).net, p = UI.pay, walk = UI.ch==='walkin';
-  const tend = parseFloat(p.tendered) || 0, change = tend - t;
+  const tend = amt(p.tendered) || 0, change = tend - t;
   const quick = [t].concat([100,200,500,1000].filter(v=>v>t)).slice(0,4);
   let body;
   if(!walk) body = `<p class="hint">Paid through ${CHANNELS.find(c=>c.id===UI.ch).n}. No cash changes hands.</p>
@@ -898,7 +900,7 @@ function askScratch(){
     <div class="row" style="gap:10px">${oxBtn(false, 'scno', 'No', 'flex:1;margin:0')}${oxBtn(true, 'scyes', 'Yes, given', 'flex:2;margin:0')}</div>`);
 }
 function completeSale(scratch){
-  const t = totals(UI.cart), p = UI.pay, tend = p.method==='cash' ? parseFloat(p.tendered)||0 : null;
+  const t = totals(UI.cart), p = UI.pay, tend = p.method==='cash' ? amt(p.tendered)||0 : null;
   const sale = {id: MODE==='live' ? uid() : 's'+S.nextNo, no:S.nextNo, at:Date.now(), shiftId:S.shift.id, crewId:S.shift.crewId, ch:UI.ch, pay:p.method,
     lines:UI.cart, gross:t.gross, disc:t.disc, total:t.net, tendered:tend, change: tend!=null ? tend - t.net : null, void:null,
     scDue: scratch ? scratch.due : null, scGiven: scratch ? scratch.given : null};
@@ -954,13 +956,13 @@ function renderOpen(){
     <div class="field"><h3>Who’s on the counter?</h3><div class="crew">${S.crew.map(x=>`<button data-act="ocrew" data-id="${x.id}" aria-pressed="${o.crew===x.id}">${esc(x.name)}</button>`).join('') || '<p class="hint">No crew yet. Ask HQ to add this store’s crew.</p>'}</div></div>
     ${o.crew && !ok ? pinHtml(o, 'opin') : ''}
     ${ok?`<div class="field"><label for="startcash">Count the starting cash in the drawer</label><input id="startcash" class="num" inputmode="decimal" autocomplete="off" placeholder="e.g. 1000" value="${esc(o.cash)}"></div>
-      <button class="charge" data-act="oopen" id="obtn" ${o.cash!==''?'':'disabled'}>Open shift</button>`:''}
+      <button class="charge" data-act="oopen" id="obtn" ${isNaN(amt(o.cash))?'disabled':''}>Open shift</button>`:''}
     <button class="btn" data-act="clock" style="align-self:flex-start">Time in / out (no shift needed)</button>
     ${demoPinHint()}</div>`);
   const sc = $('startcash'); if(sc) sc.focus();
 }
 function renderClose(counted){
-  const sh = S.shift, m = summary(sh), c = parseFloat(counted), has = counted!=='' && !isNaN(c), diff = has ? c - m.expected : 0;
+  const sh = S.shift, m = summary(sh), c = amt(counted), has = !isNaN(c), diff = has ? c - m.expected : 0;
   showScreen(`<div class="panel"><div class="row"><h1>Close shift</h1><button class="x" data-act="closescreen" aria-label="Back to register">×</button></div>
     <div class="card num"><div class="row"><span>Starting cash</span><b>${peso(sh.startCash)}</b></div><div class="row"><span>Cash sales</span><b>${peso(m.cashSales)}</b></div>
       <div class="row" style="border-top:1px solid var(--line);padding-top:8px"><span>Expected in drawer</span><b>${peso(m.expected)}</b></div></div>
@@ -1151,14 +1153,14 @@ document.addEventListener('click', e=>{
     case 'tback': tc = newPinState({act:null}); renderClock(); break;
     case 'tpin': pinKey(tc, b.dataset.k, renderClock); break;
     case 'tact': tc.act = b.dataset.a; renderClock(); break;
-    case 'cclose': { const c = parseFloat($('counted').value); const sh = S.shift; sh.counted = c; sh.closedAt = Date.now(); S.shifts.push(sh); S.shift = null; save();
+    case 'cclose': { const c = amt($('counted').value); if(isNaN(c)) return; const sh = S.shift; sh.counted = c; sh.closedAt = Date.now(); S.shifts.push(sh); S.shift = null; save();
       enqueue({op:'close', id:sh.id, closed_at:iso(sh.closedAt), counted_cash:c});
       renderZ(sh); renderTop(); break }
     case 'zclock': tc = newPinState({act:null}); renderClock(); break;
     case 'newshift': openState = newPinState({cash:''}); renderOpen(); break;
     case 'ocrew': openState = newPinState({cash:''}); pickCrew(openState, id, renderOpen); break;
     case 'opin': pinKey(openState, b.dataset.k, renderOpen); break;
-    case 'oopen': { const cash = parseFloat(openState.cash); if(isNaN(cash)) return;
+    case 'oopen': { const cash = amt(openState.cash); if(isNaN(cash)) return;
       b.disabled = true; openShift(cash); break }
     case 'reset': try{ localStorage.removeItem(KEY_DEMO) }catch(_){} S = seed(); UI.cart = []; closeOv(); closeScreen(); renderAll(); toast('Demo reset'); break;
     case 'demo': startDemo(); break;
@@ -1184,12 +1186,12 @@ document.addEventListener('submit', async e=>{
 });
 document.addEventListener('input', e=>{
   const t = e.target;
-  if(t.id==='tendered'){ UI.pay.tendered = t.value; const tot = totals(UI.cart).net, v = parseFloat(t.value)||0;
+  if(t.id==='tendered'){ UI.pay.tendered = t.value; const tot = totals(UI.cart).net, v = amt(t.value)||0;
     const chg = $('chg'); chg.className = 'callout num' + (v>=tot?' good':''); chg.lastElementChild.textContent = v>=tot ? peso(v-tot) : '—'; $('cpl').disabled = v<tot }
   if(t.id==='scname') UI.pick.sc.name = t.value;
   if(t.id==='scid') UI.pick.sc.id = t.value;
-  if(t.id==='startcash'){ openState.cash = t.value; $('obtn').disabled = t.value==='' || isNaN(parseFloat(t.value)) }
-  if(t.id==='counted'){ const sh = S.shift, m = summary(sh), c = parseFloat(t.value), has = t.value!=='' && !isNaN(c), d = has ? c - m.expected : 0, box = $('ovs');
+  if(t.id==='startcash'){ openState.cash = t.value; $('obtn').disabled = isNaN(amt(t.value)) }
+  if(t.id==='counted'){ const sh = S.shift, m = summary(sh), c = amt(t.value), has = !isNaN(c), d = has ? c - m.expected : 0, box = $('ovs');
     box.className = 'callout num' + (!has?'':Math.abs(d)<0.01?' good':' bad'); box.firstElementChild.textContent = !has?'Over / short':d>0?'Over':d<0?'Short':'Balanced';
     box.lastElementChild.textContent = has ? peso(Math.abs(d)) : '—'; $('cbtn').disabled = !has }
 });
