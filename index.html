@@ -238,7 +238,7 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--ube);outline-of
 const SB_URL = 'https://fsdaiiazdnkmsqwyxrcj.supabase.co';
 const SB_KEY = 'sb_publishable_qv46qcVUERE-2ivDDbKKAA_eU7QZcS6';
 // bump on every deploy: HQ shows which version each store tablet runs (v14 check-in)
-const APP_VERSION = '2026-11-26.6';
+const APP_VERSION = '2026-11-26.7';
 // look-only preview opened from HQ (pos.sagoloco.com/?preview): real menu, no database, nothing saved on this device
 const PREVIEW = new URLSearchParams(location.search).has('preview'), KEY_PREVIEW = 'slpos.preview.catalog';
 let sb = null;
@@ -1102,7 +1102,8 @@ document.addEventListener('input', e=>{
 });
 document.addEventListener('keydown', e=>{
   if(e.key==='Escape'){ if(!$('ov').hidden) closeOv(); else setTicket(false) }
-  if(e.key==='Enter' && e.target.id==='tendered' && !$('cpl').disabled) completeSale();
+  // Enter = tapping "Complete sale": same scratch-card question (found by the UI test robot 11.26.2026)
+  if(e.key==='Enter' && e.target.id==='tendered' && !$('cpl').disabled){ e.preventDefault(); askScratch() }
 });
 document.addEventListener('change', e=>{ if(e.target.id==='selfie' && e.target.files[0]) saveSelfie(e.target.files[0]) });
 addEventListener('online', ()=>{ renderSync(); refreshCatalog(); sync(); checkIn() });
