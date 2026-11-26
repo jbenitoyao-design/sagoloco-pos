@@ -283,7 +283,10 @@ const DEMO_PROMOS = [
   {id:'b1t1',  n:'B1T1 free drink',     free:true},
   {id:'fb',    n:'FB Commenter',        free:true},
   {id:'comp',  n:'Complimentary',       free:true},
-  {id:'scpwd', n:'Senior / PWD 20%',    pct:20}
+  {id:'scpwd', n:'Senior / PWD 20%',    pct:20},
+  {id:'sw-10', n:'Scratch ₱10 off', amt:10}, {id:'sw-30', n:'Scratch ₱30 off', amt:30},
+  {id:'sw-b1t1', n:'Scratch B1T1 free Tall', free:true}, {id:'sw-top', n:'Scratch free topping', amt:15},
+  {id:'sw-upsize', n:'Scratch free upsize', upsize:true}
 ];
 const SIZE_NAME = {R:'Regular',T:'Tall',G:'Grande'};
 const CHANNELS = [{id:'walkin',n:'Walk-in'},{id:'grab',n:'Grab'},{id:'panda',n:'Foodpanda'}];
@@ -304,7 +307,7 @@ function applyLiveCatalog(cat){
   MENU = cat.menu.filter(r=>r.active).sort((a,b)=>a.sort-b.sort).map(r=>({id:r.id, s:sid(r.series), n:r.name, sizes:r.sizes, del:r.delivery,
     panda: r.panda !== undefined ? r.panda : r.delivery}));   // a menu saved before Foodpanda had its own prices uses the Grab price
   TOPPINGS = cat.toppings.filter(t=>t.active).map(t=>({id:t.id, n:t.name, p:+t.price}));
-  PROMOS = cat.promos.filter(p=>p.active).map(p=>p.kind==='free' ? {id:p.id, n:p.name, free:true} : p.kind==='amount' ? {id:p.id, n:p.name, amt:+p.amount} : {id:p.id, n:p.name, pct:+p.pct});
+  PROMOS = cat.promos.filter(p=>p.active).map(p=>p.kind==='free' ? {id:p.id, n:p.name, free:true} : p.kind==='amount' ? {id:p.id, n:p.name, amt:+p.amount} : p.kind==='upsize' ? {id:p.id, n:p.name, upsize:true} : {id:p.id, n:p.name, pct:+p.pct});
   STORE = {name:cat.store.name, vat:!!cat.store.vat_registered};
   indexCatalog();
 }
@@ -325,8 +328,10 @@ const r2 = n => Math.round(n*100)/100;
 function chPrices(d, ch){ return ch==='walkin' ? d.sizes : ch==='grab' ? d.del : d.panda }
 function mkLine(drinkId,size,ch,tops,promo,qty){
   const d = byId[drinkId];
-  const base = chPrices(d, ch)[size];
-  return {drinkId,size,tops:tops||[],promo:promo||null,qty:qty||1,base,top:(tops||[]).reduce((a,t)=>a+topById[t].p,0)};
+  const pt = chPrices(d, ch), base = pt[size];
+  const l = {drinkId,size,tops:tops||[],promo:promo||null,qty:qty||1,base,top:(tops||[]).reduce((a,t)=>a+topById[t].p,0)};
+  if(promo && promoById[promo] && promoById[promo].upsize) l.upd = size==='G' && pt.T!=null ? Math.max(0, base - pt.T) : 0;   // free upsize: Grande at the Tall price
+  return l;
 }
 function seed(){
   const sh = {id:'sh-demo', crewId:'jovy', openedAt:todayAt(11,57), startCash:1000};
@@ -361,6 +366,7 @@ function lineAmt(l){
   if(p && p.free) disc = l.base * l.qty;           // free drink; toppings still paid
   // Senior/PWD: non-VAT store = 20% off; VAT store = remove 12% VAT first, then 20% off
   else if(p && p.amt) disc = Math.min(gross, p.amt * l.qty);   // peso off each cup, never below ₱0 (B-22)
+  else if(p && p.upsize) disc = l.upd != null ? Math.min(gross, l.upd * l.qty) : (l.sd || 0);   // Grande minus Tall price; a line reloaded from the server keeps its saved discount
   else if(p && p.pct) disc = STORE.vat ? Math.round((gross - gross / 1.12 * (1 - p.pct/100)) * 100) / 100 : Math.round(gross * p.pct) / 100;
   return {gross, disc, net: gross - disc};
 }
@@ -496,13 +502,13 @@ async function adoptOpenShift(){
     if(r.error || !r.data.length) return false;
     const row = r.data[0];
     if(S.outbox.some(o=>o.op==='close' && o.id===row.id) || S.shifts.some(x=>x.id===row.id)) return false;   // closed here, still syncing
-    const ss = await sb.from('sales').select('id,sale_no,crew_id,channel,pay,gross,discount,total,tendered,change_due,created_at,voided_at,void_reason,voided_by,sale_lines(menu_item_id,size,qty,base_price,toppings,toppings_price,promo_id,sc_type)').eq('shift_id', row.id).order('sale_no');
+    const ss = await sb.from('sales').select('id,sale_no,crew_id,channel,pay,gross,discount,total,tendered,change_due,created_at,voided_at,void_reason,voided_by,sale_lines(menu_item_id,size,qty,base_price,toppings,toppings_price,promo_id,discount,sc_type)').eq('shift_id', row.id).order('sale_no');
     if(ss.error) return false;
     S.shift = {id:row.id, crewId:row.crew_id, openedAt:Date.parse(row.opened_at), startCash:Number(row.start_cash)};
     const have = new Set(S.sales.map(x=>x.id)), n = v => v==null ? null : Number(v);
     ss.data.forEach(x=>{ if(have.has(x.id)) return;
       S.sales.push({id:x.id, no:x.sale_no, at:Date.parse(x.created_at), shiftId:row.id, crewId:x.crew_id, ch:x.channel, pay:x.pay,
-        lines:(x.sale_lines||[]).map(l=>({drinkId:l.menu_item_id, size:l.size, qty:l.qty, base:Number(l.base_price), top:Number(l.toppings_price), tops:l.toppings||[], promo:l.promo_id,
+        lines:(x.sale_lines||[]).map(l=>({drinkId:l.menu_item_id, size:l.size, qty:l.qty, base:Number(l.base_price), top:Number(l.toppings_price), tops:l.toppings||[], promo:l.promo_id, sd:Number(l.discount||0),
           sc: l.sc_type ? {type:l.sc_type, name:'(on file at HQ)', id:''} : null})),
         gross:Number(x.gross), disc:Number(x.discount), total:Number(x.total), tendered:n(x.tendered), change:n(x.change_due),
         void: x.voided_at ? {reason:x.void_reason, at:Date.parse(x.voided_at), by:x.voided_by} : null});
@@ -710,11 +716,12 @@ function renderTicket(){
 // ---- drink sheet: toppings / promo first, size tap adds ----
 function openPick(id){ UI.pick = {id, tops:[], promo:null, sc:{type:'Senior', name:'', id:''}}; renderPick() }
 function renderPick(){
-  const p = UI.pick, d = byId[p.id], pt = priceTable(d);
+  const p = UI.pick, d = byId[p.id], full = priceTable(d), up = p.promo && promoById[p.promo] && promoById[p.promo].upsize;
+  const pt = up ? (full.G!=null && full.T!=null ? {G:full.T} : {}) : full;   // free upsize: only Grande, charged at the Tall price
   const topSum = p.tops.reduce((a,t)=>a+topById[t].p,0);
   const series = (SERIES.find(s=>s.id===d.s) || {name:''}).name;
   showOv(`<div class="sh-top"><div><h3>${esc(series)}</h3><h2>${esc(d.n)}</h2></div><button class="x" data-act="closeov" aria-label="Close">×</button></div>
-    <div class="field"><h3>Tap a size to add · add-ons or promo first if needed</h3><div class="sizes">${Object.keys(pt).map(k=>`<button class="size${k==='G'?' grande':''}" data-act="add" data-size="${k}"><b>${SIZE_NAME[k]}</b><span class="num">${peso(pt[k]+topSum)}</span>${k==='G'&&pt.T&&pt.G>pt.T?`<small class="num">Only +${peso(pt.G-pt.T)} more</small>`:''}</button>`).join('')}</div></div>
+    <div class="field"><h3>${up?'Free upsize · Grande at the Tall price':'Tap a size to add · add-ons or promo first if needed'}</h3>${up&&!pt.G?'<p class="hint">This drink has no Tall and Grande, so the upsize promo can’t be used on it.</p>':''}<div class="sizes">${Object.keys(pt).map(k=>`<button class="size${k==='G'?' grande':''}" data-act="add" data-size="${k}"><b>${SIZE_NAME[k]}</b><span class="num">${peso(pt[k]+topSum)}</span>${!up&&k==='G'&&pt.T&&pt.G>pt.T?`<small class="num">Only +${peso(pt.G-pt.T)} more</small>`:''}</button>`).join('')}</div></div>
     <div class="field"><h3>Add-ons</h3><div class="pills">${TOPPINGS.map(t=>`<button class="pill" data-act="ptop" data-id="${esc(t.id)}" aria-pressed="${p.tops.includes(t.id)}">${esc(t.n)} +${t.p}</button>`).join('')}</div></div>
     <div class="field"><h3>Promo or discount</h3><div class="pills">${PROMOS.map(x=>`<button class="pill" data-act="ppromo" data-id="${esc(x.id)}" aria-pressed="${p.promo===x.id}">${esc(x.n)}</button>`).join('')}</div></div>
     ${p.promo==='scpwd'?`<div class="card"><h3>Required for the senior / PWD sales record</h3>
