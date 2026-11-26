@@ -249,7 +249,7 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--ube);outline-of
 const SB_URL = 'https://fsdaiiazdnkmsqwyxrcj.supabase.co';
 const SB_KEY = 'sb_publishable_qv46qcVUERE-2ivDDbKKAA_eU7QZcS6';
 // bump on every deploy: HQ shows which version each store tablet runs (v14 check-in)
-const APP_VERSION = '2026-11-26.16';
+const APP_VERSION = '2026-11-26.17';
 // look-only preview opened from HQ (pos.sagoloco.com/?preview): real menu, no database, nothing saved on this device
 const PREVIEW = new URLSearchParams(location.search).has('preview'), KEY_PREVIEW = 'slpos.preview.catalog';
 let sb = null;
@@ -648,7 +648,7 @@ async function openShift(cash){
   if(await adoptOpenShift()){ closeScreen(); renderAll();
     if(!maybeAskStale(true)) toast('Continuing ' + crewName(S.shift.crewId) + '’s open shift. Close it first to start a new one.');
     return }
-  S.shift = {id: MODE==='live' ? uid() : 'sh'+Date.now(), crewId:openState.crew, openedAt:Date.now(), startCash:cash}; S.demo = false; save();
+  S.shift = {id: MODE==='live' ? uid() : 'sh'+Date.now(), crewId:openState.crew, openedAt:Date.now(), startCash:cash}; S.lastFloat = cash; S.demo = false; save();
   enqueue({op:'shift', row:{id:S.shift.id, store_id:S.storeId, crew_id:S.shift.crewId, opened_at:iso(S.shift.openedAt), start_cash:cash, device_id:S.deviceId}});
   closeScreen(); renderAll(); toast('Shift opened · ' + peso(cash) + ' starting cash');
 }
@@ -821,7 +821,7 @@ function renderPick(){
   const p = UI.pick, d = byId[p.id], full = priceTable(d), pr = p.promo && promoById[p.promo], up = pr && pr.upsize;
   let pt = up ? (full.G!=null && full.T!=null ? {G:full.T} : {}) : full;   // free upsize: only Grande, charged at the Tall price
   if(pr && pr.size) pt = pt[pr.size]!=null ? {[pr.size]:pt[pr.size]} : {};  // a reward for one size shows only that size
-  const promos = PROMOS.filter(x => !x.drinks || x.drinks.includes(d.id));  // a reward for one drink shows only on that drink
+  const promos = PROMOS.filter(x => (!x.drinks || x.drinks.includes(d.id)) && (UI.ch==='walkin' || !counterOnly(x)));  // a reward for one drink shows only on that drink; counter cards only on walk-in
   const topSum = p.tops.reduce((a,t)=>a+topById[t].p,0);
   const series = (SERIES.find(s=>s.id===d.s) || {name:''}).name;
   showOv(`<div class="sh-top"><div><h3>${esc(series)}</h3><h2>${esc(d.n)}</h2></div><button class="x" data-act="closeov" aria-label="Close">×</button></div>
@@ -837,8 +837,10 @@ function renderPick(){
 }
 function addToCart(size, el){
   const p = UI.pick;
-  if(p.promo==='scpwd' && (!p.sc.name.trim() || !p.sc.id.trim())){
-    toast('Enter the customer’s name and ID number first'); const f = $(p.sc.name.trim() ? 'scid' : 'scname'); if(f) f.focus(); return;
+  if(p.promo==='scpwd' && (!scNameOk(p.sc.name) || !scIdOk(p.sc.id))){
+    const nameBad = !scNameOk(p.sc.name);
+    toast(!p.sc.name.trim() && !p.sc.id.trim() ? 'Enter the customer’s name and ID number first' : nameBad ? 'Enter the customer’s full name: first and last' : 'Enter the full ID number from the card');
+    const f = $(nameBad ? 'scname' : 'scid'); if(f) f.focus(); return;
   }
   const pr = p.promo && promoById[p.promo];
   if(pr && ((pr.size && size!==pr.size) || (pr.drinks && !pr.drinks.includes(p.id)))){ toast(pr.n + ' is only for ' + (pr.size ? SIZE_NAME[pr.size] + ' ' : '') + 'the listed drink'); return }
@@ -887,6 +889,43 @@ function renderPay(){
 const OX_YES = '<svg viewBox="0 0 36 36" aria-hidden="true"><circle cx="18" cy="18" r="13" fill="none" stroke="currentColor" stroke-width="4.5"/></svg>';
 const OX_NO = '<svg viewBox="0 0 36 36" aria-hidden="true"><path d="M8 8 28 28M28 8 8 28" stroke="currentColor" stroke-width="4.5" stroke-linecap="round"/></svg>';
 const oxBtn = (yes, act, word, style) => `<button class="${yes ? 'charge' : 'btn'} ox" data-act="${act}" style="${style||''}">${yes ? OX_YES : OX_NO}<span>${word}</span></button>`;
+// ---- poka-yoke locks (C-18, JB 11.26.2026): each asks once with ○ / ×, only when something looks wrong ----
+const BIG_CHANGE = 1000, RECOUNT_AT = 100;
+// Scratch & Win prizes and Frequency rewards are physical cards handed over at the counter: walk-in only
+const counterOnly = x => /^(sw|freq)-/.test(String(x.id)) || /^(scratch|frequency)\b/i.test(x.n || '');
+const scNameOk = n => n.trim().split(/\s+/).filter(w => /\p{L}{2,}/u.test(w)).length >= 2;
+const scIdOk = v => v.replace(/[\s-]/g, '').length >= 4;
+function checkPay(){
+  const p = UI.pay, t = totals(UI.cart).net;
+  if(UI.ch==='walkin' && p.method==='cash'){
+    const tend = amt(p.tendered) || 0, ch = tend - t;
+    if(ch >= BIG_CHANGE && p.bigOk !== p.tendered){
+      showOv(`<div class="sh-top"><div><h3>Check the cash</h3><h2>Change ${peso(ch)}?</h2></div><button class="x" data-act="bigno" aria-label="Back to payment">×</button></div>
+        <p>Cash received <b class="num">${peso(tend)}</b> for a <b class="num">${peso(t)}</b> order.</p>
+        <div class="callout"><span>Is the cash received right?</span></div>
+        <div class="row" style="gap:10px">${oxBtn(false, 'bigno', 'No, fix it', 'flex:1;margin:0')}${oxBtn(true, 'bigyes', 'Yes, it’s right', 'flex:2;margin:0')}</div>`);
+      return;
+    }
+  }
+  askScratch();
+}
+function askRecount(c, diff){
+  showScreen(`<div class="panel"><div><h3 class="eyebrow">Close shift</h3><h1>${diff>0?'Over':'Short'} ${peso(Math.abs(diff))}</h1></div>
+    <p>You counted <b class="num">${peso(c)}</b>. The drawer should have <b class="num">${peso(c - diff)}</b>.</p>
+    <div class="callout"><span>Count the drawer again? The Z report can’t be changed after closing.</span></div>
+    <div class="row" style="gap:10px">${oxBtn(false, 'recount', 'Count again', 'flex:1;margin:0')}${oxBtn(true, 'recountok', 'Count is right, close', 'flex:2;margin:0')}</div></div>`);
+}
+function askFloat(cash, last){
+  showScreen(`<div class="panel"><div><h3 class="eyebrow">Open a shift</h3><h1>Starting cash ${peso(cash)}?</h1></div>
+    <p>The last shift started with <b class="num">${peso(last)}</b>.</p>
+    <div class="callout"><span>Is today’s count right?</span></div>
+    <div class="row" style="gap:10px">${oxBtn(false, 'floatno', 'Count again', 'flex:1;margin:0')}${oxBtn(true, 'floatok', 'Yes, it’s right', 'flex:2;margin:0')}</div></div>`);
+}
+function doClose(c){
+  const sh = S.shift; sh.counted = c; sh.closedAt = Date.now(); S.shifts.push(sh); S.shift = null; UI.recountOk = null; save();
+  enqueue({op:'close', id:sh.id, closed_at:iso(sh.closedAt), counted_cash:c});
+  renderZ(sh); renderTop();
+}
 // scratch cards: 1 per full ₱200 the customer pays, walk-in only (JB 11.26.2026)
 const SCRATCH_EVERY = 200;
 const scratchDue = () => UI.ch==='walkin' ? Math.floor(totals(UI.cart).net / SCRATCH_EVERY + 1e-9) : 0;
@@ -1130,7 +1169,9 @@ document.addEventListener('click', e=>{
     case 'charge': if(UI.cart.length) openPay(); break;
     case 'method': UI.pay.method = id; renderPay(); break;
     case 'tend': UI.pay.tendered = b.dataset.v; renderPay(); break;
-    case 'complete': askScratch(); break;
+    case 'complete': checkPay(); break;
+    case 'bigno': renderPay(); break;
+    case 'bigyes': UI.pay.bigOk = UI.pay.tendered; askScratch(); break;
     case 'scyes': { const n = scratchDue(); completeSale({due:n, given:n}); break }
     case 'scno': completeSale({due:scratchDue(), given:0}); break;
     case 'scback': renderPay(); break;
@@ -1153,15 +1194,21 @@ document.addEventListener('click', e=>{
     case 'tback': tc = newPinState({act:null}); renderClock(); break;
     case 'tpin': pinKey(tc, b.dataset.k, renderClock); break;
     case 'tact': tc.act = b.dataset.a; renderClock(); break;
-    case 'cclose': { const c = amt($('counted').value); if(isNaN(c)) return; const sh = S.shift; sh.counted = c; sh.closedAt = Date.now(); S.shifts.push(sh); S.shift = null; save();
-      enqueue({op:'close', id:sh.id, closed_at:iso(sh.closedAt), counted_cash:c});
-      renderZ(sh); renderTop(); break }
+    case 'cclose': { const c = amt($('counted').value); if(isNaN(c)) return; const diff = c - summary(S.shift).expected;
+      if(Math.abs(diff) >= RECOUNT_AT && UI.recountOk !== c){ UI.recountC = c; askRecount(c, diff); return }
+      doClose(c); break }
+    case 'recount': UI.recountOk = null; renderClose(''); break;
+    case 'recountok': UI.recountOk = UI.recountC; doClose(UI.recountC); break;
     case 'zclock': tc = newPinState({act:null}); renderClock(); break;
     case 'newshift': openState = newPinState({cash:''}); renderOpen(); break;
     case 'ocrew': openState = newPinState({cash:''}); pickCrew(openState, id, renderOpen); break;
     case 'opin': pinKey(openState, b.dataset.k, renderOpen); break;
     case 'oopen': { const cash = amt(openState.cash); if(isNaN(cash)) return;
+      const last = S.lastFloat != null ? S.lastFloat : (S.shifts.length ? S.shifts[S.shifts.length-1].startCash : null);
+      if(last != null && Math.abs(cash - last) >= 0.01 && openState.floatOk !== cash){ askFloat(cash, last); return }
       b.disabled = true; openShift(cash); break }
+    case 'floatno': openState.cash = ''; renderOpen(); break;
+    case 'floatok': { const cash = amt(openState.cash); openState.floatOk = cash; closeScreen(); openShift(cash); break }
     case 'reset': try{ localStorage.removeItem(KEY_DEMO) }catch(_){} S = seed(); UI.cart = []; closeOv(); closeScreen(); renderAll(); toast('Demo reset'); break;
     case 'demo': startDemo(); break;
     case 'setup': closeOv(); renderSetup(); break;
@@ -1198,7 +1245,7 @@ document.addEventListener('input', e=>{
 document.addEventListener('keydown', e=>{
   if(e.key==='Escape'){ if(!$('ov').hidden) closeOv(); else setTicket(false) }
   // Enter = tapping "Complete sale": same scratch-card question (found by the UI test robot 11.26.2026)
-  if(e.key==='Enter' && e.target.id==='tendered' && !$('cpl').disabled){ e.preventDefault(); askScratch() }
+  if(e.key==='Enter' && e.target.id==='tendered' && !$('cpl').disabled){ e.preventDefault(); checkPay() }
 });
 document.addEventListener('change', e=>{ if(e.target.id==='selfie' && e.target.files[0]) saveSelfie(e.target.files[0]) });
 addEventListener('online', ()=>{ if(MODE==='live' && S.outbox.length) S.waitSince = Date.now(); renderSync(); refreshCatalog(); sync(); checkIn() });
