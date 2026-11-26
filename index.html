@@ -238,7 +238,7 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--ube);outline-of
 const SB_URL = 'https://fsdaiiazdnkmsqwyxrcj.supabase.co';
 const SB_KEY = 'sb_publishable_qv46qcVUERE-2ivDDbKKAA_eU7QZcS6';
 // bump on every deploy: HQ shows which version each store tablet runs (v14 check-in)
-const APP_VERSION = '2026-11-26.7';
+const APP_VERSION = '2026-11-26.8';
 // look-only preview opened from HQ (pos.sagoloco.com/?preview): real menu, no database, nothing saved on this device
 const PREVIEW = new URLSearchParams(location.search).has('preview'), KEY_PREVIEW = 'slpos.preview.catalog';
 let sb = null;
@@ -772,9 +772,21 @@ function addToCart(size, el){
   if(size==='G') celebrate(el, true, 'GRANDE!');
   const l = mkLine(p.id, size, UI.ch, p.tops.slice(), p.promo);
   if(p.promo==='scpwd') l.sc = {type:p.sc.type, name:p.sc.name.trim(), id:p.sc.id.trim()};
-  const same = !l.sc && UI.cart.find(x=>!x.sc && x.drinkId===l.drinkId && x.size===l.size && x.promo===l.promo && x.tops.join()===l.tops.join());
-  if(same) same.qty++; else UI.cart.push(l);
+  addLine(l);
   closeOv(); renderTicket();
+}
+// free-drink promos (B1T1, Frequency, Complimentary…) and Senior/PWD cover ONE cup: such a line never grows past 1 (B-28, Crew Tester 11.26.2026)
+const oneCup = l => !!l.sc || !!(l.promo && promoById[l.promo] && promoById[l.promo].free);
+function addLine(l){
+  const same = !oneCup(l) && UI.cart.find(x=>!oneCup(x) && x.drinkId===l.drinkId && x.size===l.size && x.promo===l.promo && x.tops.join()===l.tops.join());
+  if(same) same.qty++; else UI.cart.push(l);
+}
+// "+" on a one-cup line adds the next cup at the regular price, so B1T1 + "+" = pay one, get one
+function incLine(i){
+  const l = UI.cart[i];
+  if(!oneCup(l)){ l.qty++; return }
+  addLine(mkLine(l.drinkId, l.size, UI.ch, l.tops.slice(), null));
+  toast((l.sc ? 'Senior / PWD' : promoById[l.promo].n) + ' is for one cup. Added 1 more at the regular price.');
 }
 
 // ---- payment ----
@@ -1030,7 +1042,7 @@ document.addEventListener('click', e=>{
     case 'ppromo': UI.pick.promo = UI.pick.promo===id ? null : id; renderPick(); if(UI.pick.promo==='scpwd') $('scname').focus(); break;
     case 'sctype': UI.pick.sc.type = id; renderPick(); break;
     case 'add': addToCart(b.dataset.size, b); break;
-    case 'inc': UI.cart[+b.dataset.i].qty++; renderTicket(); break;
+    case 'inc': incLine(+b.dataset.i); renderTicket(); break;
     case 'dec': { const l = UI.cart[+b.dataset.i]; if(--l.qty<=0) UI.cart.splice(+b.dataset.i,1); renderTicket(); break }
     case 'clearcart': UI.cart = []; renderTicket(); break;
     case 'toggleticket': setTicket(!$('ticket').classList.contains('open')); break;
