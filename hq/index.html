@@ -202,20 +202,24 @@ function renderSignin(msg){
 }
 
 async function start(){
-  const {data:{user}} = await sb.auth.getUser();
+  // speed: the saved session is read on this device (no server trip; the database still checks every request),
+  // then the role and everything the screens need are fetched together instead of one after another
+  const {data:{session}} = await sb.auth.getSession();
+  const user = session && session.user;
   if(!user){ renderSignin(); return }
-  const prof = await sb.from('profiles').select('role').eq('user_id', user.id).maybeSingle();
-  if(prof.error || !prof.data || !['hq','franchisee'].includes(prof.data.role)){
-    await sb.auth.signOut(); renderSignin('This login is for a store tablet, not HQ. Use your own HQ or franchisee login.'); return;
-  }
-  V.role = prof.data.role;
-  const [st, menu, crew, tops, promos] = await Promise.all([
+  const [prof, st, menu, crew, tops, promos] = await Promise.all([
+    sb.from('profiles').select('role').eq('user_id', user.id).maybeSingle(),
     sb.from('stores').select('id,name').order('name'),
     sb.from('menu_items').select('id,name'),
     sb.from('crew').select('id,name'),          // names for the transactions list and downloads
     sb.from('toppings').select('id,name'),
     sb.from('promos').select('id,name')
   ]);
+  if(prof.error && /JWT|token|expired/i.test(prof.error.message||'')){ await sb.auth.signOut(); renderSignin(); return }
+  if(prof.error || !prof.data || !['hq','franchisee'].includes(prof.data.role)){
+    await sb.auth.signOut(); renderSignin('This login is for a store tablet, not HQ. Use your own HQ or franchisee login.'); return;
+  }
+  V.role = prof.data.role;
   (crew.data||[]).forEach(c => V.crew[c.id] = c.name); (tops.data||[]).forEach(t => V.toppings[t.id] = t.name); (promos.data||[]).forEach(p => V.promos[p.id] = p.name);
   if(st.error || menu.error){ $('app').innerHTML = '<div class="wrap"><div id="body"></div></div>'; $('body').innerHTML = `<div class="callout">Couldn’t load stores. Check the internet and pull to refresh.</div>`; return }
   V.stores = st.data; menu.data.forEach(m => V.menu[m.id] = m.name);
