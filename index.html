@@ -237,8 +237,10 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--ube);outline-of
 // ---- connection: public values only; the database's access rules decide what each login can do ----
 const SB_URL = 'https://fsdaiiazdnkmsqwyxrcj.supabase.co';
 const SB_KEY = 'sb_publishable_qv46qcVUERE-2ivDDbKKAA_eU7QZcS6';
+// look-only preview opened from HQ (pos.sagoloco.com/?preview): real menu, no database, nothing saved on this device
+const PREVIEW = new URLSearchParams(location.search).has('preview'), KEY_PREVIEW = 'slpos.preview.catalog';
 let sb = null;
-try{ if(window.supabase) sb = window.supabase.createClient(SB_URL, SB_KEY, {auth:{persistSession:true, autoRefreshToken:true}}) }catch(_){ sb = null }
+try{ if(window.supabase && !PREVIEW) sb = window.supabase.createClient(SB_URL, SB_KEY, {auth:{persistSession:true, autoRefreshToken:true}}) }catch(_){ sb = null }
 
 // ---- demo menu, rebuilt from the UTAK export (127 items -> 20 drinks x sizes); live mode loads HQ's menu ----
 const SERIES_BASE = [
@@ -317,8 +319,8 @@ indexCatalog();
 const KEY_DEMO = 'slpos.karuhatan.v1', KEY_LIVE = 'slpos.live.v1', KEY_MODE = 'slpos.mode';
 let MODE = 'demo';
 function loadKey(k){ try{ const t = localStorage.getItem(k); return t ? JSON.parse(t) : null }catch(e){ return null } }
-function save(){ try{ localStorage.setItem(MODE==='live' ? KEY_LIVE : KEY_DEMO, JSON.stringify(S)) }catch(e){} }
-function setMode(m){ MODE = m; try{ localStorage.setItem(KEY_MODE, m) }catch(_){} }
+function save(){ if(MODE==='preview') return; try{ localStorage.setItem(MODE==='live' ? KEY_LIVE : KEY_DEMO, JSON.stringify(S)) }catch(e){} }
+function setMode(m){ MODE = m; if(PREVIEW) return; try{ localStorage.setItem(KEY_MODE, m) }catch(_){} }
 function todayAt(h,m){ const d = new Date(); d.setHours(h,m,0,0); return d.getTime() }
 const uid = () => (crypto.randomUUID ? crypto.randomUUID() : 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => { const r = Math.random()*16|0; return (c==='x' ? r : (r&3|8)).toString(16) }));
 const iso = t => new Date(t).toISOString();
@@ -461,6 +463,7 @@ async function sync(){
 }
 function renderSync(){
   const el = $('syncChip'); if(!el) return;
+  if(MODE==='preview'){ el.innerHTML = '<i class="dot off"></i>Preview · nothing is saved'; return }
   if(MODE!=='live'){ el.innerHTML = '<i class="dot off"></i>Demo · this device only'; return }
   const n = S.outbox.length, f = (S.failed||[]).length, on = navigator.onLine;
   let txt, cls = '';
@@ -969,6 +972,7 @@ document.addEventListener('click', e=>{
   const b = e.target.closest('[data-act]');
   if(!b){ if(e.target.id==='ov') closeOv(); return }
   const a = b.dataset.act, id = b.dataset.id;
+  if(PREVIEW && ['reset','demo','setup','syncnow','signout'].includes(a)){ closeOv(); toast('Preview only · close this tab to leave'); return }
   switch(a){
     case 'ch':
       if(UI.cart.length && id!==UI.ch){ toast('Finish or clear this order before switching to ' + CHANNELS.find(c=>c.id===id).n); return }
@@ -1057,7 +1061,17 @@ setInterval(()=>{ sync() }, 20000);
 setInterval(async ()=>{ refreshCatalog(); cleanOldSelfies(); if(!(await checkShiftClosedByHQ())) maybeAskStale() }, 5*60000);
 
 // ---- start: a set-up tablet opens straight to its store; otherwise HQ sets it up (or tries the demo) ----
+function startPreview(){
+  MODE = 'preview';
+  const cat = loadKey(KEY_PREVIEW);
+  if(!cat || !cat.menu){ showScreen(`<div class="panel"><h1>Preview</h1><p>Open the preview from HQ → Menu &amp; prices → “See the register”.</p></div>`); return }
+  applyLiveCatalog(cat);
+  S = {v:1, crew:[{id:'pv', name:'Preview', pin:'0000'}], shift:{id:'pv', crewId:'pv', openedAt:Date.now(), startCash:0}, sales:[], shifts:[], time:[], nextNo:1, outbox:[], failed:[]};
+  document.title = 'Preview · ' + document.title;
+  closeScreen(); renderAll();
+}
 (async function boot(){
+  if(PREVIEW){ startPreview(); return }
   let session = null;
   if(sb){ try{ session = (await sb.auth.getSession()).data.session }catch(_){} }
   const live = loadKey(KEY_LIVE), mode = (()=>{ try{ return localStorage.getItem(KEY_MODE) }catch(_){ return null } })();

@@ -571,6 +571,13 @@ async function showMenu(){
   M.drinks.forEach(m => V.menu[m.id] = m.name);
   renderMenu();
 }
+// look-only register: hands the published menu to pos.sagoloco.com/?preview (same site, so this browser's storage is shared);
+// the preview never connects to the database, so it can't touch a store's open shift
+function openPreview(){
+  const st = (V.stores||[])[0];
+  try{ localStorage.setItem('slpos.preview.catalog', JSON.stringify({menu:M.drinks, toppings:M.toppings, promos:M.promos, store:{name:st ? st.name : 'Preview', vat_registered:false}})) }catch(_){}
+  window.open('/?preview', '_blank');
+}
 function renderMenu(){
   const series = [...new Set(M.drinks.map(d=>d.series))];
   const drinkRow = d => `<button class="item ${d.active?'':'off'}" data-edit="drink" data-id="${esc(d.id)}">
@@ -581,7 +588,7 @@ function renderMenu(){
   $('view').innerHTML = `
     ${M.msg ? `<div class="okmsg">${esc(M.msg)}</div>` : ''}
     <div class="filters"><p class="muted" style="margin:0;flex:1 1 300px">Changes reach the store tablets within 5 minutes. Every change is logged with who made it.</p>
-      <button class="btn" id="xl_down">⬇ Download menu (Excel)</button><button class="btn" id="xl_tpl">⬇ Blank template</button><button class="btn" id="xl_up">⬆ Upload from Excel</button></div>
+      <button class="btn" id="xl_down">⬇ Download menu (Excel)</button><button class="btn" id="xl_tpl">⬇ Blank template</button><button class="btn" id="xl_up">⬆ Upload from Excel</button><button class="btn" id="pv_open" title="Opens the crew’s register screen with this menu. Look-only: nothing is saved or sent to the store.">👁 See the register</button></div>
     <div class="cols"><div>
     <div class="sec"><h2>Drinks</h2><button class="btn" data-edit="drink" data-id="">+ Add drink</button></div>
     <div class="list">${series.map(sr=>`<div class="grp">${esc(sr)}</div>${M.drinks.filter(d=>d.series===sr).map(drinkRow).join('')}`).join('')}</div>
@@ -599,6 +606,7 @@ function renderMenu(){
   const dl = (id, blank) => { const b = $(id); b.onclick = async () => { const t = b.textContent; b.disabled = true; b.textContent = 'Preparing…';
     try{ await downloadMenu(blank) }catch(_){ alert('Couldn’t make the Excel file. Check the internet and try again.') } b.disabled = false; b.textContent = t } };
   dl('xl_down', false); dl('xl_tpl', true); $('xl_up').onclick = openMenuUpload;
+  $('pv_open').onclick = openPreview;
 }
 
 // ---- editor sheet ----
