@@ -249,7 +249,7 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--ube);outline-of
 const SB_URL = 'https://fsdaiiazdnkmsqwyxrcj.supabase.co';
 const SB_KEY = 'sb_publishable_qv46qcVUERE-2ivDDbKKAA_eU7QZcS6';
 // bump on every deploy: HQ shows which version each store tablet runs (v14 check-in)
-const APP_VERSION = '2026-11-26.17';
+const APP_VERSION = '2026-11-26.18';
 // look-only preview opened from HQ (pos.sagoloco.com/?preview): real menu, no database, nothing saved on this device
 const PREVIEW = new URLSearchParams(location.search).has('preview'), KEY_PREVIEW = 'slpos.preview.catalog';
 let sb = null;
@@ -362,7 +362,7 @@ function seed(){
     mk(14,10,'walkin','gcash',[mkLine('gm-regal','T','walkin')]),
     mk(15,40,'grab','grab',[mkLine('gm-regal','G','grab')]),
     mk(16,22,'walkin','cash',[mkLine('choco','R','walkin',[], null, 2)],150),
-    mk(17,25,'walkin','cash',[mkLine('gm-graham','T','walkin'),mkLine('ube-dn','T','walkin',[],'freq')],100),
+    mk(17,25,'walkin','cash',[mkLine('gm-graham','T','walkin'),mkLine('ube-dn','T','walkin',[],'freq-ube')],100),
     mk(18,18,'panda','panda',[mkLine('ova','G','panda')]),
     mk(18,43,'walkin','cash',[mkLine('kk-frappe','T','walkin'),mkLine('gm-oreo','G','walkin',['cheese'],'scpwd')],500)
   ];
