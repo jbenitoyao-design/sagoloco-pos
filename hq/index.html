@@ -245,7 +245,7 @@ async function cleanOldSelfies(){
 
 // ---------- data ----------
 // Sales for any period (B-19). Dates are Manila calendar dates as 'YYYY-MM-DD'; a range is [from, to).
-const SALE_COLS = 'id,store_id,sale_no,crew_id,channel,pay,gross,discount,total,tendered,change_due,created_at,voided_at,void_reason,' +
+const SALE_COLS = 'id,store_id,sale_no,crew_id,channel,pay,gross,discount,total,tendered,change_due,created_at,voided_at,void_reason,scratch_due,scratch_given,' +
   'sale_lines(menu_item_id,size,qty,base_price,toppings,toppings_price,promo_id,discount,net,sc_type)';
 const CH = {walkin:'Walk-in', grab:'Grab', panda:'Foodpanda'};
 const PERIODS = [['day','Day'],['week','Week'],['month','Month'],['year','Year'],['custom','Custom']];
@@ -321,8 +321,9 @@ function crunch(sales){
   const ok = sales.filter(s => !s.voided_at), voided = sales.filter(s => s.voided_at);
   const net = ok.reduce((a,s)=>a+Number(s.total),0), disc = ok.reduce((a,s)=>a+Number(s.discount||0),0);
   const pay = {}, hours = Array(24).fill(0), hourN = Array(24).fill(0), items = {}, stores = {}, days = {}, months = {};
-  let cups = 0, grande = 0, tops = 0, withTop = 0;
+  let cups = 0, grande = 0, tops = 0, withTop = 0, scDue = 0, scGiven = 0;
   ok.forEach(s => {
+    scDue += s.scratch_due||0; scGiven += s.scratch_given||0;
     const t = Number(s.total);
     pay[s.pay] = (pay[s.pay]||0) + t;
     const h = hourPH(s.created_at); hours[h] += t; hourN[h]++;
@@ -337,7 +338,7 @@ function crunch(sales){
     });
   });
   return {n:ok.length, voids:voided.length, voidAmt:voided.reduce((a,s)=>a+Number(s.total),0), net, disc, avg: ok.length ? net/ok.length : 0,
-    pay, hours, hourN, items, stores, days, months, cups, grande, tops, withTop};
+    pay, hours, hourN, items, stores, days, months, cups, grande, tops, withTop, scDue, scGiven};
 }
 
 // ---------- screens ----------
@@ -464,7 +465,7 @@ function renderBody(){
   const txRow = s => `<tr class="${s.voided_at?'off':''}"><td class="num">${multi?esc(fmtD(dateOf(s.created_at)))+' ':''}${esc(timePH(s.created_at))}</td>
       ${allStores?`<td>${esc(storeName(s.store_id))}</td>`:''}<td class="num">#${s.sale_no}</td><td>${esc(V.crew[s.crew_id]||'—')}</td>
       <td>${esc(CH[s.channel]||s.channel)}${s.pay!==s.channel?' · '+esc(PAY[s.pay]||s.pay):''}</td>
-      <td class="items">${(s.sale_lines||[]).map(l=>esc(lineText(l))).join('<br>')}</td>
+      <td class="items">${(s.sale_lines||[]).map(l=>esc(lineText(l))).join('<br>')}${s.scratch_due ? `<div><span class="tag ${s.scratch_given<s.scratch_due?'warn':'good'}" style="margin:4px 0 0">Scratch cards ${s.scratch_given} of ${s.scratch_due}</span></div>` : ''}</td>
       <td class="r num">${peso(Number(s.total))}${s.voided_at?`<div><span class="tag warn">Voided</span></div><div class="muted">${esc(s.void_reason||'')}</div>`:`<div><button class="linkbtn" data-void="${esc(s.id)}">Void</button></div>`}</td></tr>`;
 
   $('body').innerHTML = `<div class="grid">
@@ -491,6 +492,8 @@ function renderBody(){
       <div class="row"><span class="l">Cups with toppings</span><span class="r num">${m.withTop} of ${m.cups} · ${pct(m.withTop,m.cups)}%</span></div>
       <div class="meter" role="img" aria-label="${pct(m.withTop,m.cups)}% of cups had toppings"><i style="width:${pct(m.withTop,m.cups)}%"></i></div>
       <div class="row"><span class="l">Toppings added</span><span class="r num">${m.tops}</span></div>
+      ${m.scDue ? `<div class="row" style="margin-top:12px"><span class="l">Scratch cards given</span><span class="r num">${m.scGiven} of ${m.scDue} · ${pct(m.scGiven,m.scDue)}%</span></div>
+      <div class="meter" role="img" aria-label="${pct(m.scGiven,m.scDue)}% of scratch cards due were given"><i style="width:${pct(m.scGiven,m.scDue)}%"></i></div>` : ''}
     </div>
     ${multi ? `<div class="card span8"><h2>Busiest hours</h2>${barChart('hours', charts.hours, 'Busiest')}</div>` : ''}
     ${storeRows ? `<div class="card span4"><h2>By store</h2><table><thead><tr><th>Store</th><th class="r">Txns</th><th class="r">Sales</th><th class="r">Share</th></tr></thead><tbody>${storeRows}</tbody></table></div>` : ''}
@@ -652,7 +655,7 @@ function saleRows(){
     const d = dateOf(s.created_at), t = timePH(s.created_at), status = s.voided_at ? 'Voided' : 'Counted', ls = s.sale_lines || [];
     tx.push({'Date':d, 'Time':t, 'Store':storeName(s.store_id), 'Sale #':s.sale_no, 'Crew':V.crew[s.crew_id]||'', 'Type':CH[s.channel]||s.channel, 'Paid by':PAY[s.pay]||s.pay,
       'Items':ls.map(lineText).join('; '), 'Cups':ls.reduce((a,l)=>a+l.qty,0), 'Gross':Number(s.gross), 'Discount':Number(s.discount||0), 'Total':Number(s.total),
-      'Cash given':s.tendered!=null?Number(s.tendered):'', 'Change':s.change_due!=null?Number(s.change_due):'', 'Status':status, 'Void reason':s.void_reason||'',
+      'Cash given':s.tendered!=null?Number(s.tendered):'', 'Change':s.change_due!=null?Number(s.change_due):'', 'Scratch cards due':s.scratch_due??'', 'Scratch cards given':s.scratch_given??'', 'Status':status, 'Void reason':s.void_reason||'',
       'Voided at':s.voided_at ? dateOf(s.voided_at)+' '+timePH(s.voided_at) : ''});
     ls.forEach(l => lines.push({'Date':d, 'Time':t, 'Store':storeName(s.store_id), 'Sale #':s.sale_no, 'Drink':V.menu[l.menu_item_id]||l.menu_item_id, 'Size':SIZE[l.size]||l.size,
       'Qty':l.qty, 'Drink price':Number(l.base_price), 'Toppings':(l.toppings||[]).map(toppingName).join(', '), 'Toppings price':Number(l.toppings_price||0),
@@ -689,7 +692,7 @@ function openDownload(){
     try{ await loadXLSX() }catch(_){ throw new Error('Couldn’t load the Excel maker. Check the internet, or use the CSV buttons below.') }
     const wb = XLSX.utils.book_new(), add = (r, name, widths) => { const ws = XLSX.utils.json_to_sheet(r.length ? r : [{}]); ws['!cols'] = widths.map(w=>({wch:w})); XLSX.utils.book_append_sheet(wb, ws, name) };
     add(rows.summary, 'Daily summary', [11,22,13,7,10,10,11,10,10,10,10,7,13]);
-    add(rows.tx, 'Transactions', [11,9,22,7,12,10,10,60,6,9,9,9,10,9,9,18,18]);
+    add(rows.tx, 'Transactions', [11,9,22,7,12,10,10,60,6,9,9,9,10,9,9,8,8,18,18]);
     add(rows.lines, 'Items', [11,9,22,7,26,8,5,11,26,13,18,9,9,10,11]);
     XLSX.writeFile(wb, base + '.xlsx'); closeEditor();
   });

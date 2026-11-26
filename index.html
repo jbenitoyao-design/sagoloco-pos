@@ -289,7 +289,6 @@ const DEMO_PROMOS = [
   {id:'sw-10', n:'Scratch ₱10 off', amt:10}, {id:'sw-30', n:'Scratch ₱30 off', amt:30},
   {id:'sw-b1t1', n:'Scratch B1T1 free Tall', free:true}, {id:'sw-top', n:'Scratch free topping', amt:15},
   {id:'sw-upsize', n:'Scratch free upsize', upsize:true},
-  {id:'sw-card', n:'Scratch & Win (200)', mark:true},
   {id:'freq-f1', n:'Frequency F1', mark:true}, {id:'freq-f2', n:'Frequency F2', mark:true}, {id:'freq-f3', n:'Frequency F3', mark:true},
   {id:'freq-f4', n:'Frequency F4', mark:true}, {id:'freq-f5', n:'Frequency F5', mark:true}
 ];
@@ -508,7 +507,7 @@ async function adoptOpenShift(){
     if(r.error || !r.data.length) return false;
     const row = r.data[0];
     if(S.outbox.some(o=>o.op==='close' && o.id===row.id) || S.shifts.some(x=>x.id===row.id)) return false;   // closed here, still syncing
-    const ss = await sb.from('sales').select('id,sale_no,crew_id,channel,pay,gross,discount,total,tendered,change_due,created_at,voided_at,void_reason,voided_by,sale_lines(menu_item_id,size,qty,base_price,toppings,toppings_price,promo_id,discount,sc_type)').eq('shift_id', row.id).order('sale_no');
+    const ss = await sb.from('sales').select('id,sale_no,crew_id,channel,pay,gross,discount,total,tendered,change_due,created_at,voided_at,void_reason,voided_by,scratch_due,scratch_given,sale_lines(menu_item_id,size,qty,base_price,toppings,toppings_price,promo_id,discount,sc_type)').eq('shift_id', row.id).order('sale_no');
     if(ss.error) return false;
     S.shift = {id:row.id, crewId:row.crew_id, openedAt:Date.parse(row.opened_at), startCash:Number(row.start_cash)};
     const have = new Set(S.sales.map(x=>x.id)), n = v => v==null ? null : Number(v);
@@ -516,7 +515,7 @@ async function adoptOpenShift(){
       S.sales.push({id:x.id, no:x.sale_no, at:Date.parse(x.created_at), shiftId:row.id, crewId:x.crew_id, ch:x.channel, pay:x.pay,
         lines:(x.sale_lines||[]).map(l=>({drinkId:l.menu_item_id, size:l.size, qty:l.qty, base:Number(l.base_price), top:Number(l.toppings_price), tops:l.toppings||[], promo:l.promo_id, sd:Number(l.discount||0),
           sc: l.sc_type ? {type:l.sc_type, name:'(on file at HQ)', id:''} : null})),
-        gross:Number(x.gross), disc:Number(x.discount), total:Number(x.total), tendered:n(x.tendered), change:n(x.change_due),
+        gross:Number(x.gross), disc:Number(x.discount), total:Number(x.total), tendered:n(x.tendered), change:n(x.change_due), scDue:x.scratch_due, scGiven:x.scratch_given,
         void: x.voided_at ? {reason:x.void_reason, at:Date.parse(x.voided_at), by:x.voided_by} : null});
     });
     S.sales.sort((a,b)=>a.no-b.no); save();
@@ -791,20 +790,34 @@ function renderPay(){
     ${body}`);
   const inp = $('tendered'); if(inp){ inp.focus(); inp.setSelectionRange(inp.value.length, inp.value.length) }
 }
-function completeSale(){
+// scratch cards: 1 per full ₱200 the customer pays, walk-in only (JB 11.26.2026)
+const SCRATCH_EVERY = 200;
+const scratchDue = () => UI.ch==='walkin' ? Math.floor(totals(UI.cart).net / SCRATCH_EVERY + 1e-9) : 0;
+function askScratch(){
+  const n = scratchDue();
+  if(!n){ completeSale(null); return }
+  const t = totals(UI.cart).net, cards = n===1 ? '1 scratch card' : n + ' scratch cards';
+  showOv(`<div class="sh-top"><div><h3>Scratch &amp; Win</h3><h2>Give ${cards}</h2></div><button class="x" data-act="scback" aria-label="Back to payment">×</button></div>
+    <p>This order is <b class="num">${peso(t)}</b>: <b>${cards}</b> (1 for every ${peso(SCRATCH_EVERY)}).</p>
+    <div class="callout"><span>Did you give the customer ${cards}?</span></div>
+    <div class="row" style="gap:10px"><button class="btn" data-act="scno" style="flex:1">No</button><button class="charge" data-act="scyes" style="flex:2">Yes, given</button></div>`);
+}
+function completeSale(scratch){
   const t = totals(UI.cart), p = UI.pay, tend = p.method==='cash' ? parseFloat(p.tendered)||0 : null;
   const sale = {id: MODE==='live' ? uid() : 's'+S.nextNo, no:S.nextNo, at:Date.now(), shiftId:S.shift.id, crewId:S.shift.crewId, ch:UI.ch, pay:p.method,
-    lines:UI.cart, gross:t.gross, disc:t.disc, total:t.net, tendered:tend, change: tend!=null ? tend - t.net : null, void:null};
+    lines:UI.cart, gross:t.gross, disc:t.disc, total:t.net, tendered:tend, change: tend!=null ? tend - t.net : null, void:null,
+    scDue: scratch ? scratch.due : null, scGiven: scratch ? scratch.given : null};
   S.sales.push(sale); S.nextNo++; save();
   if(MODE==='live'){
     const lines = sale.lines.map(l=>{ const a = lineAmt(l); l.lid = uid();
       return {id:l.lid, sale_id:sale.id, menu_item_id:l.drinkId, size:l.size, qty:l.qty, base_price:l.base, toppings:l.tops, toppings_price:l.top,
         promo_id:l.promo, discount:r2(a.disc), net:r2(a.net), sc_type:l.sc?l.sc.type:null, sc_name:l.sc?l.sc.name:null, sc_id_no:l.sc?l.sc.id:null} });
     enqueue({op:'sale', lines, sale:{id:sale.id, store_id:S.storeId, shift_id:sale.shiftId, crew_id:sale.crewId, sale_no:sale.no, channel:sale.ch, pay:sale.pay,
-      gross:r2(sale.gross), discount:r2(sale.disc), total:r2(sale.total), tendered:sale.tendered, change_due:sale.change==null?null:r2(sale.change), created_at:iso(sale.at)}});
+      gross:r2(sale.gross), discount:r2(sale.disc), total:r2(sale.total), tendered:sale.tendered, change_due:sale.change==null?null:r2(sale.change), created_at:iso(sale.at),
+      ...(sale.scDue!=null ? {scratch_due:sale.scDue, scratch_given:sale.scGiven} : {})}});
   }
   UI.cart = []; closeOv(); setTicket(false); renderTicket(); renderTop();
-  toast('Sale #' + sale.no + ' saved' + (sale.change ? ' · Change ' + peso(sale.change) : ''));
+  toast('Sale #' + sale.no + ' saved' + (sale.change ? ' · Change ' + peso(sale.change) : '') + (sale.scGiven ? ' · ' + sale.scGiven + ' scratch card' + (sale.scGiven>1?'s':'') : ''));
 }
 
 // ---- today's sales + void ----
@@ -836,7 +849,8 @@ function summary(sh){
   }));
   const cashSales = sum(s=>s.pay==='cash'?s.total:0);
   return {all, ok, net:sum(s=>s.total), disc:sum(s=>s.disc), n:ok.length, voids:all.filter(s=>s.void),
-    byPay:by('pay'), byCh:by('ch'), mix, promos, sc, cashSales, expected: sh.startCash + cashSales};
+    byPay:by('pay'), byCh:by('ch'), mix, promos, sc, cashSales, expected: sh.startCash + cashSales,
+    scDue: sum(s=>s.scDue||0), scGiven: sum(s=>s.scGiven||0), scMissed: ok.filter(s=>s.scDue && s.scGiven < s.scDue).map(s=>s.no)};
 }
 let openState = newPinState({cash:''});
 function renderOpen(){
@@ -876,6 +890,7 @@ function renderZ(sh){
     <div class="card num"><h3>By payment</h3>${Object.entries(m.byPay).map(([k,v])=>`<div class="row"><span>${payN[k]||k}</span><span>${peso(v)}</span></div>`).join('')||'<span class="hint">None</span>'}
       <h3 style="margin-top:8px">By order source</h3>${Object.entries(m.byCh).map(([k,v])=>`<div class="row"><span>${chN(k)}</span><span>${peso(v)}</span></div>`).join('')||'<span class="hint">None</span>'}</div>
     <div class="card num"><h3>Promos &amp; discounts · ${peso(m.disc)}</h3>${rows(m.promos,([k,v])=>`<div class="row"><span>${esc(k)} × ${v.q}</span><span>−${peso(v.amt)}</span></div>`)||'<span class="hint">No promos used</span>'}</div>
+    ${m.scDue ? `<div class="card num"><h3>Scratch cards</h3><div class="row"><span>Given</span><b>${m.scGiven} of ${m.scDue}</b></div>${m.scMissed.length?`<div class="row"><span>Not given on sale</span><span>${m.scMissed.map(n=>'#'+n).join(', ')}</span></div>`:''}</div>` : ''}
     <div class="card"><h3>Senior / PWD record · ${m.sc.length}</h3>${m.sc.length?`<div style="overflow-x:auto"><table class="tbl num"><thead><tr><th>Sale</th><th>Type</th><th>Name</th><th>ID no.</th><th>Discount</th></tr></thead><tbody>
       ${m.sc.map(x=>`<tr><td>#${x.no}</td><td>${x.type}</td><td>${esc(x.name)}</td><td>${esc(x.id)}</td><td>${peso(x.disc)}</td></tr>`).join('')}</tbody></table></div>`:'<span class="hint">No senior or PWD discounts</span>'}</div>
     <div class="card"><h3>Product mix</h3><div style="overflow-x:auto"><table class="tbl num"><thead><tr><th>Drink</th><th class="r">Qty</th><th>Sales</th></tr></thead><tbody>
@@ -1015,7 +1030,10 @@ document.addEventListener('click', e=>{
     case 'charge': if(UI.cart.length) openPay(); break;
     case 'method': UI.pay.method = id; renderPay(); break;
     case 'tend': UI.pay.tendered = b.dataset.v; renderPay(); break;
-    case 'complete': completeSale(); break;
+    case 'complete': askScratch(); break;
+    case 'scyes': { const n = scratchDue(); completeSale({due:n, given:n}); break }
+    case 'scno': completeSale({due:scratchDue(), given:0}); break;
+    case 'scback': renderPay(); break;
     case 'closeov': closeOv(); break;
     case 'sales': if(S.shift){ renderSales() } break;
     case 'void': UI.voiding = id; UI.vreason = null; renderSales(); break;
