@@ -245,7 +245,7 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--ube);outline-of
 const SB_URL = 'https://fsdaiiazdnkmsqwyxrcj.supabase.co';
 const SB_KEY = 'sb_publishable_qv46qcVUERE-2ivDDbKKAA_eU7QZcS6';
 // bump on every deploy: HQ shows which version each store tablet runs (v14 check-in)
-const APP_VERSION = '2026-11-26.13';
+const APP_VERSION = '2026-11-26.14';
 // look-only preview opened from HQ (pos.sagoloco.com/?preview): real menu, no database, nothing saved on this device
 const PREVIEW = new URLSearchParams(location.search).has('preview'), KEY_PREVIEW = 'slpos.preview.catalog';
 let sb = null;
@@ -492,6 +492,43 @@ function renderSync(){
   if(!on) return show('wait', n ? 'Offline · ' + n + ' waiting' : 'Offline · still saving');
   if(n) return show('wait', 'Syncing ' + n + '…');
   show('ok', 'All synced');
+}
+
+// ---- sync problems (C-20): records the database refused. Nothing is ever thrown away here:
+// "Try again" puts them back in the outbox; if the database still refuses, they come back with the new reason.
+function describeFailed(f){
+  const t = v => v ? fmtTime(v) : '';
+  if(f.op==='sale') return 'Sale #' + f.sale.sale_no + ' · ' + peso(f.sale.total) + ' · ' + t(f.sale.created_at);
+  if(f.op==='shift') return 'Shift opened ' + t(f.row.opened_at);
+  if(f.op==='close') return 'Shift close · counted ' + peso(f.counted_cash) + ' · ' + t(f.closed_at);
+  if(f.op==='void') return 'Void of a sale · ' + t(f.voided_at);
+  if(f.op==='time') return 'Time record (' + String(f.row.type||'').replace(/_/g,' ') + ') · ' + t(f.row.at);
+  if(f.op==='selfie') return 'Selfie photo (the time record itself was kept)';
+  return 'Record (' + f.op + ')';
+}
+function retryFailed(){
+  if(MODE!=='live' || !S.failed.length) return 0;
+  const back = S.failed.filter(f => f.op!=='selfie').map(f => { const o = Object.assign({}, f); delete o.error; return o });
+  // a void or close sent while its sale/shift was missing changed nothing in the database: send it again after the retry
+  for(const o of back.slice()){
+    if(o.op==='sale'){ const ls = S.sales.find(x=>x.id===o.sale.id);
+      if(ls && ls.void && !back.some(b=>b.op==='void' && b.id===ls.id)) back.push({op:'void', id:ls.id, voided_at:iso(ls.void.at), void_reason:ls.void.reason, voided_by:ls.void.by}) }
+    if(o.op==='shift'){ const sh = S.shifts.find(x=>x.id===o.row.id);
+      if(sh && sh.closedAt && !back.some(b=>b.op==='close' && b.id===sh.id)) back.push({op:'close', id:sh.id, closed_at:iso(sh.closedAt), counted_cash:sh.counted}) }
+  }
+  const n = S.failed.length;
+  if(back.length && !S.outbox.length) S.waitSince = Date.now();
+  S.outbox.push(...back); S.failed = []; save(); renderSync(); sync();
+  return n;
+}
+function renderProblems(){
+  const f = S.failed || [];
+  showOv(`<div class="sh-top"><div><h3>${esc(STORE.name)}</h3><h2>Sync problems</h2></div><button class="x" data-act="closeov" aria-label="Close">×</button></div>
+    ${f.length ? `<p class="hint">The database refused ${f.length===1?'this record':'these '+f.length+' records'}. They are still saved on this tablet.</p>
+      <div class="acts">${f.map(x=>`<div class="mitem" style="cursor:default">${esc(describeFailed(x))}<small style="overflow-wrap:anywhere">${esc(x.error||'')}</small></div>`).join('')}</div>
+      <button class="charge" data-act="retryfailed" style="width:100%;margin-top:12px">Try again</button>
+      <p class="hint" style="text-align:center">Nothing is deleted. If it still can’t sync, it comes back here and HQ sees the reason.</p>`
+    : `<p class="hint">Nothing waiting. Everything this tablet saved has reached the database.</p>`}`);
 }
 
 // ---- live mode: tablet login + HQ's menu and crew ----
@@ -1042,6 +1079,7 @@ function renderMenu(){
   showOv(`<div class="sh-top"><div><h3>${esc(STORE.name)}</h3><h2>Shift tools</h2></div><button class="x" data-act="closeov" aria-label="Close">×</button></div>
     <div class="acts">${item('clock','Time in / out','Selfie clock-in, breaks, clock-out')}
     ${S.shift ? item('sales','Today’s sales','This shift’s sales and voids') + item('close','Close shift','Count the cash and print the Z report') : ''}
+    ${live && (S.failed||[]).length ? item('problems','Sync problems', S.failed.length + ' couldn’t sync · see why, try again') : ''}
     ${live ? item('syncnow','Sync now', waiting ? waiting + ' waiting to send' : 'Everything is sent') : ''}
     ${live && !S.shift ? (UI.confirmSignout ? item('signout','Tap again to sign out','HQ will need the tablet login to set it up again') : item('signout','Sign out this tablet','For HQ: unlink this tablet from the store')) : ''}
     ${!live && S.demo ? item('reset','Reset demo','Reload the sample sales') : ''}
@@ -1118,6 +1156,8 @@ document.addEventListener('click', e=>{
     case 'reset': try{ localStorage.removeItem(KEY_DEMO) }catch(_){} S = seed(); UI.cart = []; closeOv(); closeScreen(); renderAll(); toast('Demo reset'); break;
     case 'demo': startDemo(); break;
     case 'setup': closeOv(); renderSetup(); break;
+    case 'problems': renderProblems(); break;
+    case 'retryfailed': { const n = retryFailed(); closeOv(); toast(n ? 'Trying ' + n + ' again…' : 'Nothing to retry'); break }
     case 'syncnow': closeOv(); if(navigator.onLine){ refreshCatalog(); sync(); toast('Syncing…') } else toast('No internet right now. Everything is saved on this tablet.'); break;
     case 'signout':
       if(S.outbox.length){ toast('Wait until everything is synced before signing out'); return }
@@ -1175,6 +1215,7 @@ function startPreview(){
   if(live && live.storeId && mode==='live' && (session || !navigator.onLine)){
     MODE = 'live'; S = live; S.outbox = S.outbox||[]; S.failed = S.failed||[]; S.pinCache = S.pinCache||{}; S.time = S.time||[];
     if(S.catalog) applyLiveCatalog(S.catalog);
+    if(S.failed.length && S.failRetryVer !== APP_VERSION){ S.failRetryVer = APP_VERSION; retryFailed() }   // a new app version may have fixed the cause
     prune(); save(); renderAll(); refreshCatalog(); sync(); cleanOldSelfies(); pullOfficeVoids(); checkIn();
     if(!(await checkShiftClosedByHQ())) maybeAskStale(true);
     return;
