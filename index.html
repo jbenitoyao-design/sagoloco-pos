@@ -237,6 +237,8 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--ube);outline-of
 // ---- connection: public values only; the database's access rules decide what each login can do ----
 const SB_URL = 'https://fsdaiiazdnkmsqwyxrcj.supabase.co';
 const SB_KEY = 'sb_publishable_qv46qcVUERE-2ivDDbKKAA_eU7QZcS6';
+// bump on every deploy: HQ shows which version each store tablet runs (v14 check-in)
+const APP_VERSION = '2026-11-26.6';
 // look-only preview opened from HQ (pos.sagoloco.com/?preview): real menu, no database, nothing saved on this device
 const PREVIEW = new URLSearchParams(location.search).has('preview'), KEY_PREVIEW = 'slpos.preview.catalog';
 let sb = null;
@@ -539,6 +541,11 @@ function renderStale(){
     <p class="hint">${esc(crewName(sh.crewId))}’s shift · ${n} sale${n===1?'':'s'}. Closing means counting the cash in the drawer and printing the Z report. Then open a new shift for today.</p>
     <button class="charge" data-act="staleclose">Yes, close it now</button>
     <button class="btn" data-act="stalekeep" style="align-self:flex-start">No, keep using it</button></div>`);
+}
+// check-in: tells HQ this tablet's app version and sync backlog; the database stamps the time. Never blocks anything.
+async function checkIn(){
+  if(MODE!=='live' || !sb || !navigator.onLine || !S.storeId || !S.deviceId) return;
+  try{ await sb.from('devices').upsert({device_id:S.deviceId, store_id:S.storeId, app_version:APP_VERSION, outbox_n:S.outbox.length, failed_n:(S.failed||[]).length}, {onConflict:'device_id'}) }catch(_){}
 }
 // a sale voided from the office (HQ or franchisee) shows as voided here too, so the Z report and cash count match the database
 async function pullOfficeVoids(){
@@ -993,7 +1000,8 @@ function renderMenu(){
     ${live ? item('syncnow','Sync now', waiting ? waiting + ' waiting to send' : 'Everything is sent') : ''}
     ${live && !S.shift ? (UI.confirmSignout ? item('signout','Tap again to sign out','HQ will need the tablet login to set it up again') : item('signout','Sign out this tablet','For HQ: unlink this tablet from the store')) : ''}
     ${!live && S.demo ? item('reset','Reset demo','Reload the sample sales') : ''}
-    ${!live ? item('setup','Set up this tablet','For HQ: connect it to a store') : ''}</div>`);
+    ${!live ? item('setup','Set up this tablet','For HQ: connect it to a store') : ''}</div>
+    <p class="hint" style="text-align:center">App version ${APP_VERSION}</p>`);
 }
 
 // ---- overlay plumbing ----
@@ -1097,10 +1105,10 @@ document.addEventListener('keydown', e=>{
   if(e.key==='Enter' && e.target.id==='tendered' && !$('cpl').disabled) completeSale();
 });
 document.addEventListener('change', e=>{ if(e.target.id==='selfie' && e.target.files[0]) saveSelfie(e.target.files[0]) });
-addEventListener('online', ()=>{ renderSync(); refreshCatalog(); sync() });
+addEventListener('online', ()=>{ renderSync(); refreshCatalog(); sync(); checkIn() });
 addEventListener('offline', renderSync);
 setInterval(()=>{ sync() }, 20000);
-setInterval(async ()=>{ refreshCatalog(); cleanOldSelfies(); pullOfficeVoids(); if(!(await checkShiftClosedByHQ())) maybeAskStale() }, 5*60000);
+setInterval(async ()=>{ refreshCatalog(); cleanOldSelfies(); pullOfficeVoids(); checkIn(); if(!(await checkShiftClosedByHQ())) maybeAskStale() }, 5*60000);
 
 // ---- start: a set-up tablet opens straight to its store; otherwise HQ sets it up (or tries the demo) ----
 function startPreview(){
@@ -1120,7 +1128,7 @@ function startPreview(){
   if(live && live.storeId && mode==='live' && (session || !navigator.onLine)){
     MODE = 'live'; S = live; S.outbox = S.outbox||[]; S.failed = S.failed||[]; S.pinCache = S.pinCache||{}; S.time = S.time||[];
     if(S.catalog) applyLiveCatalog(S.catalog);
-    prune(); save(); renderAll(); refreshCatalog(); sync(); cleanOldSelfies(); pullOfficeVoids();
+    prune(); save(); renderAll(); refreshCatalog(); sync(); cleanOldSelfies(); pullOfficeVoids(); checkIn();
     if(!(await checkShiftClosedByHQ())) maybeAskStale(true);
     return;
   }

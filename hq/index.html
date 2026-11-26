@@ -1085,11 +1085,15 @@ async function showStores(){
   $('view').innerHTML = `<p class="empty">Loading stores…</p>`;
   const hq = V.role==='hq';
   try{
-    const [st, cr, pp] = await Promise.all([
+    const [st, cr, pp, dv, lv] = await Promise.all([
       sb.from('stores').select('id,code,name,address,company_owned,vat_registered,active').order('name'),
       sb.from('crew').select('id,store_id,name,active').order('name'),
-      hq ? hqCall('people') : Promise.resolve({people:[]})
+      hq ? hqCall('people') : Promise.resolve({people:[]}),
+      sb.from('devices').select('device_id,store_id,app_version,outbox_n,failed_n,last_seen').then(r => r.data || [], () => []),
+      // the newest app version = what pos.sagoloco.com serves right now
+      fetch('/index.html', {cache:'no-store'}).then(r => r.text()).then(t => (t.match(/APP_VERSION = '([^']+)'/)||[])[1] || null).catch(() => null)
     ]);
+    P.devices = dv; P.latest = lv;
     if(st.error || cr.error) throw new Error(NET);
     P.stores = st.data.sort((a,b)=>(b.active-a.active) || a.name.localeCompare(b.name));
     P.crew = cr.data; P.people = pp.people || [];
@@ -1158,6 +1162,14 @@ function renderStore(el){
         || `<p class="muted">${s.company_owned ? 'Company-owned store: add a franchisee only if this store gets franchised.' : 'No franchisee login yet. Once added, they see this store’s sales and manage its crew. They never see other stores.'}</p>`}
       <button class="btn" id="addFr">+ Add franchisee</button></div>`;
 
+  // tablet check-in (v14): which app version the counter tablet runs, and when it last checked in
+  const devs = (P.devices||[]).filter(d=>d.store_id===s.id).sort((a,b)=>b.last_seen.localeCompare(a.last_seen));
+  const devRow = d => { const mins = Math.round((Date.now() - Date.parse(d.last_seen))/6e4), old = P.latest && d.app_version !== P.latest;
+    return `<div class="row"><span class="l">${devs.length>1 ? 'Tablet …' + esc(d.device_id.slice(-4)) : 'Tablet'}</span><span class="r">App ${esc(d.app_version||'?')}
+      ${old ? '<span class="tag warn">Old version · reopen the app</span>' : P.latest ? '<span class="tag good">Latest</span>' : ''}<br>
+      <span class="muted">${mins < 2 ? 'Checked in just now' : mins < 60 ? 'Checked in ' + mins + ' min ago' : 'Last checked in ' + when(d.last_seen)}${d.outbox_n ? ' · ' + d.outbox_n + ' waiting to sync' : ''}${d.failed_n ? ' · <b>' + d.failed_n + ' couldn’t sync</b>' : ''}</span></span></div>`;
+  };
+  const devCard = `<div class="card" id="store-devices"><h2>Tablet check-in</h2>${devs.length ? devs.slice(0,3).map(devRow).join('') : '<p class="muted">No check-in yet. The tablet reports every 5 minutes while it’s online with the latest app.</p>'}</div>`;
   const tabCard = !hq ? '' : `<div class="card" id="store-tablet"><h2>Store tablet</h2>
       ${tab ? `<div class="person ${tab.off?'offp':''}"><div><b>${esc(tab.email)}</b>
           <div class="muted">${tab.off ? 'Turned off: this tablet can’t sign in or sync' : tab.signed_in_at ? 'Set up · last signed in ' + when(tab.signed_in_at) : '<span class="tag warn">Not set up on a tablet yet</span>'}</div></div>
@@ -1176,7 +1188,7 @@ function renderStore(el){
       ${offCrew.length ? `<div style="margin-top:14px"><button class="linkbtn" id="toggleOff">${P.showOff ? 'Hide turned off' : 'Show turned off (' + offCrew.length + ')'}</button>
         ${P.showOff ? `<p class="muted" style="margin:6px 0 4px">People who left. Kept so their past sales and time records keep their names.</p>${offCrew.map(crewRow).join('')}` : ''}</div>` : ''}</div>`;
 
-  el.innerHTML = `${back}${P.msg?`<div class="okmsg">${esc(P.msg)}</div>`:''}<div class="detailgrid">${details}${frCard}${tabCard}${crewCard}</div>`;
+  el.innerHTML = `${back}${P.msg?`<div class="okmsg">${esc(P.msg)}</div>`:''}<div class="detailgrid">${details}${frCard}${tabCard}${devCard}${crewCard}</div>`;
   P.msg = '';
   if($('back')) $('back').onclick = () => { P.sel = null; P.showOff = false; drawStores() };
   if($('toggleOff')) $('toggleOff').onclick = () => { P.showOff = !P.showOff; renderStore(el) };
