@@ -238,7 +238,7 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--ube);outline-of
 const SB_URL = 'https://fsdaiiazdnkmsqwyxrcj.supabase.co';
 const SB_KEY = 'sb_publishable_qv46qcVUERE-2ivDDbKKAA_eU7QZcS6';
 // bump on every deploy: HQ shows which version each store tablet runs (v14 check-in)
-const APP_VERSION = '2026-11-26.8';
+const APP_VERSION = '2026-11-26.9';
 // look-only preview opened from HQ (pos.sagoloco.com/?preview): real menu, no database, nothing saved on this device
 const PREVIEW = new URLSearchParams(location.search).has('preview'), KEY_PREVIEW = 'slpos.preview.catalog';
 let sb = null;
@@ -775,8 +775,9 @@ function addToCart(size, el){
   addLine(l);
   closeOv(); renderTicket();
 }
-// free-drink promos (B1T1, Frequency, Complimentary…) and Senior/PWD cover ONE cup: such a line never grows past 1 (B-28, Crew Tester 11.26.2026)
-const oneCup = l => !!l.sc || !!(l.promo && promoById[l.promo] && promoById[l.promo].free);
+// free-drink promos (B1T1, Frequency, Complimentary…), Senior/PWD and every Scratch & Win prize (ids "sw-…": one card = one prize, JB 11.26.2026)
+// cover ONE cup: such a line never grows past 1 (B-28, Crew Tester 11.26.2026). Other peso-off promos stay "each cup" (B-22).
+const oneCup = l => !!l.sc || !!(l.promo && (String(l.promo).startsWith('sw-') || (promoById[l.promo] && promoById[l.promo].free)));
 function addLine(l){
   const same = !oneCup(l) && UI.cart.find(x=>!oneCup(x) && x.drinkId===l.drinkId && x.size===l.size && x.promo===l.promo && x.tops.join()===l.tops.join());
   if(same) same.qty++; else UI.cart.push(l);
