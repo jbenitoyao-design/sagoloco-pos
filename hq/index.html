@@ -1155,15 +1155,21 @@ function renderStore(el){
         : `<p class="muted">The tablet at the counter needs its own login. Create it here, then type it once on the tablet.</p><button class="primary" id="mkTab">Create tablet login</button>`}</div>`;
 
   const pinTxt = c => P.pin[c.id]===undefined ? '' : P.pin[c.id] ? 'PIN set' : 'No PIN yet: makes one on the tablet';
-  const crewCard = `<div class="card" id="store-crew"><h2>Crew</h2>
-      ${crew.map(c=>`<div class="person ${c.active?'':'offp'}"><div><b>${esc(c.name)}</b><div class="muted" data-pinfor="${c.id}">${c.active ? esc(pinTxt(c)) : 'Turned off'}</div></div>
+  // people who left stay on file (their past sales and time records point to them) but are tucked away
+  const onCrew = crew.filter(c=>c.active), offCrew = crew.filter(c=>!c.active);
+  const crewRow = c => `<div class="person ${c.active?'':'offp'}"><div><b>${esc(c.name)}</b><div class="muted" data-pinfor="${c.id}">${c.active ? esc(pinTxt(c)) : 'Turned off'}</div></div>
         <div class="acts">${c.active ? `<button class="btn" data-pinreset="${c.id}" ${P.pin[c.id]?'':'hidden'}>Reset PIN</button><button class="btn danger" data-crewoff="${c.id}">Turn off</button>`
-          : `<button class="btn" data-crewon="${c.id}">Turn back on</button>`}</div></div>`).join('') || '<p class="muted">No crew yet. Add each person who works the counter; they make their own 4-digit PIN the first time they use the tablet.</p>'}
-      <button class="btn" id="addCrew">+ Add crew</button></div>`;
+          : `<button class="btn" data-crewon="${c.id}">Turn back on</button>`}</div></div>`;
+  const crewCard = `<div class="card" id="store-crew"><h2>Crew</h2>
+      ${onCrew.map(crewRow).join('') || `<p class="muted">${offCrew.length ? 'No active crew.' : 'No crew yet.'} Add each person who works the counter; they make their own 4-digit PIN the first time they use the tablet.</p>`}
+      <button class="btn" id="addCrew">+ Add crew</button>
+      ${offCrew.length ? `<div style="margin-top:14px"><button class="linkbtn" id="toggleOff">${P.showOff ? 'Hide turned off' : 'Show turned off (' + offCrew.length + ')'}</button>
+        ${P.showOff ? `<p class="muted" style="margin:6px 0 4px">People who left. Kept so their past sales and time records keep their names.</p>${offCrew.map(crewRow).join('')}` : ''}</div>` : ''}</div>`;
 
   el.innerHTML = `${back}${P.msg?`<div class="okmsg">${esc(P.msg)}</div>`:''}<div class="detailgrid">${details}${frCard}${tabCard}${crewCard}</div>`;
   P.msg = '';
-  if($('back')) $('back').onclick = () => { P.sel = null; drawStores() };
+  if($('back')) $('back').onclick = () => { P.sel = null; P.showOff = false; drawStores() };
+  if($('toggleOff')) $('toggleOff').onclick = () => { P.showOff = !P.showOff; renderStore(el) };
   if($('editStore')) $('editStore').onclick = () => storeForm(s);
   if($('addFr')) $('addFr').onclick = () => franchiseeForm(s);
   if($('mkTab')) $('mkTab').onclick = () => confirmSheet('Create tablet login', `This makes the login that the ${s.name} counter tablet signs in with. You’ll see its email and password once, on the next screen.`, 'Create tablet login',
