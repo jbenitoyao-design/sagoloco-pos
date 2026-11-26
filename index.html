@@ -624,6 +624,13 @@ async function sha(s){ const b = await crypto.subtle.digest('SHA-256', new TextE
 async function checkPin(crewId, pin){
   if(MODE==='demo'){ const c = S.crew.find(x=>x.id===crewId); return {ok: !!c && c.pin===pin} }
   const key = await sha(crewId + ':' + pin);
+  // speed: a PIN this tablet already saw the server accept opens at once; the server re-checks it in the
+  // background, and if HQ or the franchisee reset it, the tablet forgets it so the next entry goes to the server
+  if(S.pinCache[crewId] && S.pinCache[crewId]===key){
+    if(navigator.onLine && sb) sb.rpc('verify_crew_pin', {p_crew:crewId, p_pin:pin}).then(r => {
+      if(!r.error && r.data===false && S.pinCache[crewId]===key){ delete S.pinCache[crewId]; save() } }).catch(()=>{});
+    return {ok:true};
+  }
   if(navigator.onLine && sb){
     try{
       const r = await sb.rpc('verify_crew_pin', {p_crew:crewId, p_pin:pin});
@@ -654,7 +661,8 @@ async function claimPin(crewId, pin){
 const newPinState = extra => Object.assign({crew:null, pin:'', phase:'enter', first:'', status:null, msg:''}, extra||{});
 async function pickCrew(st, id, rerender){
   Object.assign(st, {crew:id, pin:'', phase:'enter', first:'', status:null, msg:''}); rerender();
-  if(MODE==='live' && !(await hasPin(id)) && st.crew===id){ st.phase = 'new'; rerender() }
+  if(MODE==='live' && !S.pinCache[id] && !(await hasPin(id)) && st.crew===id){ st.phase = 'new'; rerender() }
+  else if(MODE==='live' && S.pinCache[id]) hasPin(id);   // known PIN: no waiting; still clears it here if it was reset
 }
 async function pinKey(st, k, rerender){
   if(st.status==='checking' || st.status==='ok') return;
