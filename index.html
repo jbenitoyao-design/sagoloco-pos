@@ -249,7 +249,7 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--ube);outline-of
 const SB_URL = 'https://fsdaiiazdnkmsqwyxrcj.supabase.co';
 const SB_KEY = 'sb_publishable_qv46qcVUERE-2ivDDbKKAA_eU7QZcS6';
 // bump on every deploy: HQ shows which version each store tablet runs (v14 check-in)
-const APP_VERSION = '2026-11-26.18';
+const APP_VERSION = '2026-11-27.1';
 // look-only preview opened from HQ (pos.sagoloco.com/?preview): real menu, no database, nothing saved on this device
 const PREVIEW = new URLSearchParams(location.search).has('preview'), KEY_PREVIEW = 'slpos.preview.catalog';
 let sb = null;
@@ -418,7 +418,8 @@ async function pushOp(op){
     r = await sb.from('sales').upsert(op.sale, {onConflict:'id', ignoreDuplicates:true});
     if(!r.error) r = await sb.from('sale_lines').upsert(op.lines, {onConflict:'id', ignoreDuplicates:true});
   }
-  else if(op.op==='void') r = await sb.from('sales').update({voided_at:op.voided_at, void_reason:op.void_reason, voided_by:op.voided_by}).eq('id', op.id);
+  // only void a sale that isn't voided yet: if the office already voided it, the sale is already void and there is nothing to send
+  else if(op.op==='void') r = await sb.from('sales').update({voided_at:op.voided_at, void_reason:op.void_reason, voided_by:op.voided_by}).eq('id', op.id).is('voided_at', null);
   else if(op.op==='close') r = await sb.from('shifts').update({closed_at:op.closed_at, counted_cash:op.counted_cash}).eq('id', op.id);
   else if(op.op==='time'){
     const perr = await pushSelfie(op); if(perr) return perr;
