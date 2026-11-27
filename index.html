@@ -226,7 +226,7 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--ube);outline-of
     <span class="chip" id="syncChip"><i class="dot"></i>Starting…</span>
     <span class="chip demo" id="demoChip" hidden>Demo data</span>
     <span class="spacer"></span>
-    <button class="btn cog" data-act="menu" title="Shift tools: time in/out, today’s sales, void, close shift"><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path fill="currentColor" d="M19.4 13a7.6 7.6 0 0 0 0-2l2.1-1.6-2-3.5-2.5 1a7.4 7.4 0 0 0-1.7-1L15 3h-4l-.3 2.9a7.4 7.4 0 0 0-1.7 1l-2.5-1-2 3.5L6.6 11a7.6 7.6 0 0 0 0 2l-2.1 1.6 2 3.5 2.5-1c.5.4 1.1.7 1.7 1L11 21h4l.3-2.9c.6-.3 1.2-.6 1.7-1l2.5 1 2-3.5L19.4 13ZM13 15.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7Z" transform="translate(-1 0)"/></svg><span>Void · Close shift</span></button>
+    <button class="btn cog" data-act="menu" title="Shift tools: time in/out, this shift’s sales, day total, void, close shift"><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path fill="currentColor" d="M19.4 13a7.6 7.6 0 0 0 0-2l2.1-1.6-2-3.5-2.5 1a7.4 7.4 0 0 0-1.7-1L15 3h-4l-.3 2.9a7.4 7.4 0 0 0-1.7 1l-2.5-1-2 3.5L6.6 11a7.6 7.6 0 0 0 0 2l-2.1 1.6 2 3.5 2.5-1c.5.4 1.1.7 1.7 1L11 21h4l.3-2.9c.6-.3 1.2-.6 1.7-1l2.5 1 2-3.5L19.4 13ZM13 15.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7Z" transform="translate(-1 0)"/></svg><span>Void · Close shift</span></button>
   </header>
   <div class="main">
     <section class="menu" aria-label="Menu">
@@ -249,7 +249,7 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--ube);outline-of
 const SB_URL = 'https://fsdaiiazdnkmsqwyxrcj.supabase.co';
 const SB_KEY = 'sb_publishable_qv46qcVUERE-2ivDDbKKAA_eU7QZcS6';
 // bump on every deploy: HQ shows which version each store tablet runs (v14 check-in)
-const APP_VERSION = '2026-11-27.1';
+const APP_VERSION = '2026-11-27.2';
 // look-only preview opened from HQ (pos.sagoloco.com/?preview): real menu, no database, nothing saved on this device
 const PREVIEW = new URLSearchParams(location.search).has('preview'), KEY_PREVIEW = 'slpos.preview.catalog';
 let sb = null;
@@ -957,7 +957,7 @@ function completeSale(scratch){
   toast('Sale #' + sale.no + ' saved' + (sale.change ? ' · Change ' + peso(sale.change) : '') + (sale.scGiven ? ' · ' + sale.scGiven + ' scratch card' + (sale.scGiven>1?'s':'') : ''));
 }
 
-// ---- today's sales + void ----
+// ---- this shift's sales + void ----
 function shiftSales(id){ return S.sales.filter(s=>s.shiftId===id) }
 function renderSales(){
   const list = shiftSales(S.shift.id).slice().reverse();
@@ -997,7 +997,8 @@ function renderOpen(){
     ${o.crew && !ok ? pinHtml(o, 'opin') : ''}
     ${ok?`<div class="field"><label for="startcash">Count the starting cash in the drawer</label><input id="startcash" class="num" inputmode="decimal" autocomplete="off" placeholder="e.g. 1000" value="${esc(o.cash)}"></div>
       <button class="charge" data-act="oopen" id="obtn" ${isNaN(amt(o.cash))?'disabled':''}>Open shift</button>`:''}
-    <button class="btn" data-act="clock" style="align-self:flex-start">Time in / out (no shift needed)</button>
+    <div class="row" style="justify-content:flex-start;flex-wrap:wrap;gap:8px"><button class="btn" data-act="clock">Time in / out (no shift needed)</button>
+    <button class="btn" data-act="day">Day total · Z reports</button></div>
     ${demoPinHint()}</div>`);
   const sc = $('startcash'); if(sc) sc.focus();
 }
@@ -1012,13 +1013,41 @@ function renderClose(counted){
     <p class="hint">${esc(crewName(sh.crewId))} · opened ${fmtTime(sh.openedAt)} · ${m.n} sales</p></div>`);
   const ci = $('counted'); ci.focus(); ci.setSelectionRange(ci.value.length, ci.value.length);
 }
-function renderZ(sh){
+// ---- day total: every shift opened that day, so it adds up to the Z reports exactly (JB 11.27.2026) ----
+const dayKey = t => new Date(t).toDateString();
+function renderDay(){
+  const back = UI.dayBack ? 1 : 0, d = new Date(); d.setDate(d.getDate() - back);
+  const key = d.toDateString(), all = S.shifts.concat(S.shift ? [S.shift] : []);
+  const list = all.filter(sh => dayKey(sh.openedAt)===key).sort((a,b)=>a.openedAt-b.openedAt);
+  const ms = list.map(sh => ({sh, m:summary(sh)}));
+  const add = (o, f) => ms.reduce((a,x)=>a+f(x), 0), tot = {}, ch = {};
+  ms.forEach(x => { for(const k in x.m.byPay) tot[k] = (tot[k]||0) + x.m.byPay[k]; for(const k in x.m.byCh) ch[k] = (ch[k]||0) + x.m.byCh[k] });
+  const net = add(0, x=>x.m.net), n = add(0, x=>x.m.n), nv = add(0, x=>x.m.voids.length), vamt = add(0, x=>x.m.voids.reduce((a,s)=>a+s.total,0));
+  const closed = ms.filter(x=>x.sh.closedAt), ovs = closed.reduce((a,x)=>a + (x.sh.counted - x.m.expected), 0);
+  const payN = {cash:'Cash',gcash:'GCash',grab:'Grab',panda:'Foodpanda'}, chN = id => (CHANNELS.find(c=>c.id===id)||{n:id}).n;
+  const rowsOf = (o, nm) => Object.entries(o).sort((a,b)=>b[1]-a[1]).map(([k,v])=>`<div class="row"><span>${nm(k)}</span><span>${peso(v)}</span></div>`).join('') || '<span class="hint">None</span>';
+  const ovsTxt = v => Math.abs(v)<0.01 ? 'Balanced' : (v>0?'Over ':'Short ') + peso(Math.abs(v));
+  showScreen(`<div class="panel">
+    <div class="row"><div><h3 class="eyebrow">Day total · ${esc(STORE.name)}</h3><h1>${d.toLocaleDateString('en-PH',{weekday:'short',month:'short',day:'numeric'})}</h1></div><button class="x" data-act="daydone" aria-label="Close">×</button></div>
+    <div class="seg" role="group" aria-label="Day"><button data-act="dayset" data-id="0" aria-pressed="${!back}">Today</button><button data-act="dayset" data-id="1" aria-pressed="${!!back}">Yesterday</button></div>
+    <div class="kpis num"><div class="kpi"><b>${peso(net)}</b><span>Net sales</span></div><div class="kpi"><b>${n}</b><span>Sales</span></div><div class="kpi"><b>${nv}</b><span>Voids${nv?' · '+peso(vamt):''}</span></div></div>
+    <div class="card num"><h3>Check against the deposit and the apps</h3>${rowsOf(tot, k=>payN[k]||k)}
+      <h3 style="margin-top:8px">By order source</h3>${rowsOf(ch, chN)}</div>
+    ${closed.length ? `<div class="callout ${Math.abs(ovs)<0.01?'good':'bad'} num"><span>Cash drawer, closed shifts</span><span>${ovsTxt(ovs)}</span></div>` : ''}
+    <div class="card"><h3>Shifts · ${list.length}</h3>${ms.map(({sh,m})=>{
+      const open = !sh.closedAt, when = fmtTime(sh.openedAt) + ' – ' + (open ? 'still open' : fmtTime(sh.closedAt));
+      const sub = open ? 'Not counted yet' : ovsTxt(sh.counted - m.expected);
+      return `<button class="mitem" ${open?'disabled':`data-act="zagain" data-id="${esc(sh.id)}"`}><span class="row" style="width:100%"><span>${esc(crewName(sh.crewId))} · ${when}</span><b class="num">${peso(m.net)}</b></span><small>${m.n} sale${m.n===1?'':'s'} · ${sub}${open?'':' · tap to open the Z report'}</small></button>`;
+    }).join('') || `<p class="hint">No shifts ${back?'yesterday':'today'} on this tablet.</p>`}</div>
+    <p class="hint">Adds up every shift opened that day on this tablet, so it matches the Z reports. The HQ dashboard shows every tablet.</p></div>`);
+}
+function renderZ(sh, again){
   const m = summary(sh), diff = sh.counted - m.expected;
   const rows = (o,fmt) => Object.entries(o).sort((a,b)=>(b[1].amt??b[1])-(a[1].amt??a[1])).map(fmt).join('');
   const chN = id => (CHANNELS.find(c=>c.id===id)||{n:id}).n, payN = {cash:'Cash',gcash:'GCash',grab:'Grab',panda:'Foodpanda'};
   showScreen(`<div class="panel">
     <div><h3 class="eyebrow">Z report · ${esc(STORE.name)} · ${new Date(sh.openedAt).toLocaleDateString('en-PH',{month:'short',day:'numeric',year:'numeric'})}</h3>
-      <h1>${esc(crewName(sh.crewId))}’s shift</h1><p class="hint">${fmtTime(sh.openedAt)} – ${fmtTime(sh.closedAt)} · Internal record, not an official invoice</p></div>
+      <h1>${esc(crewName(sh.crewId))}’s shift</h1><p class="hint">${fmtTime(sh.openedAt)} – ${fmtTime(sh.closedAt)} · Internal record, not an official invoice${again?' · Reopened copy':''}</p></div>
     <div class="kpis num"><div class="kpi"><b>${peso(m.net)}</b><span>Net sales</span></div><div class="kpi"><b>${m.n}</b><span>Sales</span></div><div class="kpi"><b>${peso(m.n?m.net/m.n:0)}</b><span>Average sale</span></div></div>
     <div class="card num"><h3>Cash drawer</h3>
       <div class="row"><span>Starting cash</span><span>${peso(sh.startCash)}</span></div><div class="row"><span>Cash sales</span><span>${peso(m.cashSales)}</span></div>
@@ -1033,8 +1062,8 @@ function renderZ(sh){
     <div class="card"><h3>Product mix</h3><div style="overflow-x:auto"><table class="tbl num"><thead><tr><th>Drink</th><th class="r">Qty</th><th>Sales</th></tr></thead><tbody>
       ${rows(m.mix,([k,v])=>`<tr><td>${esc(k)}</td><td class="r">${v.q}</td><td>${peso(v.amt)}</td></tr>`)}</tbody></table></div></div>
     <div class="card num"><h3>Voids · ${m.voids.length}</h3>${m.voids.map(s=>`<div class="row"><span>#${s.no} · ${esc(s.void.reason)}</span><span>${peso(s.total)}</span></div>`).join('')||'<span class="hint">No voided sales</span>'}</div>
-    <div class="acts"><button class="charge" data-act="zclock">Time out / time in</button>
-    <button class="btn" data-act="newshift">Open the next shift</button></div></div>`);
+    ${again ? `<div class="acts"><button class="charge" data-act="day">Back to day total</button></div></div>` : `<div class="acts"><button class="charge" data-act="zclock">Time out / time in</button>
+    <button class="btn" data-act="newshift">Open the next shift</button></div></div>`}`);
 }
 
 // ---- time clock: selfie in/out and breaks, separate from who runs the register ----
@@ -1127,7 +1156,8 @@ function renderMenu(){
   const live = MODE==='live', waiting = live ? S.outbox.length : 0;
   showOv(`<div class="sh-top"><div><h3>${esc(STORE.name)}</h3><h2>Shift tools</h2></div><button class="x" data-act="closeov" aria-label="Close">×</button></div>
     <div class="acts">${item('clock','Time in / out','Selfie clock-in, breaks, clock-out')}
-    ${S.shift ? item('sales','Today’s sales','This shift’s sales and voids') + item('close','Close shift','Count the cash and print the Z report') : ''}
+    ${S.shift ? item('sales','This shift’s sales','Sales and voids for this shift only') + item('close','Close shift','Count the cash and print the Z report') : ''}
+    ${item('day','Day total · Z reports','Every shift today or yesterday · open any Z report')}
     ${live && (S.failed||[]).length ? item('problems','Sync problems', S.failed.length + ' couldn’t sync · see why, try again') : ''}
     ${live ? item('syncnow','Sync now', waiting ? waiting + ' waiting to send' : 'Everything is sent') : ''}
     ${live && !S.shift ? (UI.confirmSignout ? item('signout','Tap again to sign out','HQ will need the tablet login to set it up again') : item('signout','Sign out this tablet','For HQ: unlink this tablet from the store')) : ''}
@@ -1201,6 +1231,10 @@ document.addEventListener('click', e=>{
     case 'recount': UI.recountOk = null; renderClose(''); break;
     case 'recountok': UI.recountOk = UI.recountC; doClose(UI.recountC); break;
     case 'zclock': tc = newPinState({act:null}); renderClock(); break;
+    case 'day': closeOv(); renderDay(); break;
+    case 'dayset': UI.dayBack = id==='1'; renderDay(); break;
+    case 'zagain': { const sh = S.shifts.find(x=>x.id===id); if(sh) renderZ(sh, true); break }
+    case 'daydone': UI.dayBack = false; closeScreen(); if(!S.shift) renderOpen(); break;
     case 'newshift': openState = newPinState({cash:''}); renderOpen(); break;
     case 'ocrew': openState = newPinState({cash:''}); pickCrew(openState, id, renderOpen); break;
     case 'opin': pinKey(openState, b.dataset.k, renderOpen); break;
