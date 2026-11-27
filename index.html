@@ -100,6 +100,8 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--ube);outline-of
 .empty{color:var(--muted);text-align:center;padding:40px 12px;line-height:1.5}
 .line{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 10px;padding:12px 0;border-bottom:1px dashed var(--line)}
 .line .nm{font-weight:700}
+.ln-edit{text-align:left;background:none;border:0;padding:0;margin:0;font:inherit;color:inherit;min-height:44px;cursor:pointer}
+.ln-edit .chg{display:block;font-size:12.5px;font-weight:700;color:var(--hi);margin-top:3px}
 .line .sub{font-size:12.5px;color:var(--muted);grid-column:1}
 .line .amt{text-align:right;font-weight:700}
 .line .amt s{display:block;font-weight:500;color:var(--muted);font-size:12px}
@@ -249,7 +251,7 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--ube);outline-of
 const SB_URL = 'https://fsdaiiazdnkmsqwyxrcj.supabase.co';
 const SB_KEY = 'sb_publishable_qv46qcVUERE-2ivDDbKKAA_eU7QZcS6';
 // bump on every deploy: HQ shows which version each store tablet runs (v14 check-in)
-const APP_VERSION = '2026-11-27.2';
+const APP_VERSION = '2026-11-27.3';
 // look-only preview opened from HQ (pos.sagoloco.com/?preview): real menu, no database, nothing saved on this device
 const PREVIEW = new URLSearchParams(location.search).has('preview'), KEY_PREVIEW = 'slpos.preview.catalog';
 let sb = null;
@@ -798,8 +800,8 @@ function renderTicket(){
   const chName = CHANNELS.find(c=>c.id===UI.ch).n;
   const lines = UI.cart.map((l,i)=>{
     const a = lineAmt(l), tops = l.tops.map(x=>topById[x].n).join(', ');
-    return `<div class="line"><div><div class="nm">${esc(lineName(l))}</div>
-      ${tops?`<div class="sub">+ ${esc(tops)}</div>`:''}${l.promo?`<span class="badge">${esc(promoById[l.promo].n)}${l.sc?' · '+esc(l.sc.name):''}</span>`:''}</div>
+    return `<div class="line"><button class="ln-edit" data-act="editline" data-i="${i}" aria-label="Change ${esc(lineName(l))}"><div class="nm">${esc(lineName(l))}</div>
+      ${tops?`<div class="sub">+ ${esc(tops)}</div>`:''}${l.promo?`<span class="badge">${esc(promoById[l.promo].n)}${l.sc?' · '+esc(l.sc.name):''}</span>`:''}<span class="chg">✎ Change</span></button>
       <div class="amt num">${a.disc?`<s>${peso(a.gross)}</s>`:''}${peso(a.net)}</div>
       <div class="sub num">${peso(l.base+l.top)} each</div>
       <div class="qty"><button data-act="dec" data-i="${i}" aria-label="One less">−</button><b class="num">${l.qty}</b><button data-act="inc" data-i="${i}" aria-label="One more">+</button></div></div>`;
@@ -818,6 +820,12 @@ function renderTicket(){
 
 // ---- drink sheet: toppings / promo first, size tap adds ----
 function openPick(id){ UI.pick = {id, tops:[], promo:null, sc:{type:'Senior', name:'', id:''}}; renderPick() }
+// tap a drink already in the order: same sheet, filled in with its size / add-ons / promo; tapping a size saves the change in place (B-28, JB 11.27.2026)
+function openEdit(i){
+  const l = UI.cart[i]; if(!l) return;
+  UI.pick = {id:l.drinkId, tops:l.tops.slice(), promo:l.promo, sc:l.sc ? {...l.sc} : {type:'Senior', name:'', id:''}, edit:i, size:l.size};
+  renderPick();
+}
 function renderPick(){
   const p = UI.pick, d = byId[p.id], full = priceTable(d), pr = p.promo && promoById[p.promo], up = pr && pr.upsize;
   let pt = up ? (full.G!=null && full.T!=null ? {G:full.T} : {}) : full;   // free upsize: only Grande, charged at the Tall price
@@ -826,7 +834,7 @@ function renderPick(){
   const topSum = p.tops.reduce((a,t)=>a+topById[t].p,0);
   const series = (SERIES.find(s=>s.id===d.s) || {name:''}).name;
   showOv(`<div class="sh-top"><div><h3>${esc(series)}</h3><h2>${esc(d.n)}</h2></div><button class="x" data-act="closeov" aria-label="Close">×</button></div>
-    <div class="field"><h3>${up?'Free upsize · Grande at the Tall price':'Tap a size to add · add-ons or promo first if needed'}</h3>${up&&!pt.G?'<p class="hint">This drink has no Tall and Grande, so the upsize promo can’t be used on it.</p>':''}${pr&&pr.size?`<p class="hint">${esc(pr.n)}: ${SIZE_NAME[pr.size]} only.</p>`:''}<div class="sizes">${Object.keys(pt).map(k=>`<button class="size${k==='G'?' grande':''}" data-act="add" data-size="${k}"><b>${SIZE_NAME[k]}</b><span class="num">${pr&&pr.free ? (topSum ? 'Free + ' + peso(topSum) : 'FREE') : peso(pt[k]+topSum)}</span>${!up&&k==='G'&&pt.T&&pt.G>pt.T?`<small class="num">Only +${peso(pt.G-pt.T)} more</small>`:''}</button>`).join('')}</div></div>
+    <div class="field"><h3>${p.edit!=null?'Changing this drink · fix add-ons or promo, then tap a size to save':up?'Free upsize · Grande at the Tall price':'Tap a size to add · add-ons or promo first if needed'}</h3>${up&&!pt.G?'<p class="hint">This drink has no Tall and Grande, so the upsize promo can’t be used on it.</p>':''}${pr&&pr.size?`<p class="hint">${esc(pr.n)}: ${SIZE_NAME[pr.size]} only.</p>`:''}<div class="sizes">${Object.keys(pt).map(k=>`<button class="size${k==='G'?' grande':''}" data-act="add" data-size="${k}"${p.edit!=null&&p.size===k?' aria-current="true" style="outline:3px solid currentColor;outline-offset:-3px"':''}><b>${SIZE_NAME[k]}${p.edit!=null&&p.size===k?' · now':''}</b><span class="num">${pr&&pr.free ? (topSum ? 'Free + ' + peso(topSum) : 'FREE') : peso(pt[k]+topSum)}</span>${!up&&k==='G'&&pt.T&&pt.G>pt.T?`<small class="num">Only +${peso(pt.G-pt.T)} more</small>`:''}</button>`).join('')}</div></div>
     <div class="field"><h3>Add-ons</h3><div class="pills">${TOPPINGS.map(t=>`<button class="pill" data-act="ptop" data-id="${esc(t.id)}" aria-pressed="${p.tops.includes(t.id)}">${esc(t.n)} +${t.p}</button>`).join('')}</div></div>
     <div class="field"><h3>Promo or discount</h3><div class="pills">${promos.map(x=>`<button class="pill" data-act="ppromo" data-id="${esc(x.id)}" aria-pressed="${p.promo===x.id}">${esc(x.n)}</button>`).join('')}</div></div>
     ${p.promo==='scpwd'?`<div class="card"><h3>Required for the senior / PWD sales record</h3>
@@ -845,10 +853,18 @@ function addToCart(size, el){
   }
   const pr = p.promo && promoById[p.promo];
   if(pr && ((pr.size && size!==pr.size) || (pr.drinks && !pr.drinks.includes(p.id)))){ toast(pr.n + ' is only for ' + (pr.size ? SIZE_NAME[pr.size] + ' ' : '') + 'the listed drink'); return }
-  if(size==='G') celebrate(el, true, 'GRANDE!');
+  if(size==='G' && !(p.edit!=null && p.size==='G')) celebrate(el, true, 'GRANDE!');
   const l = mkLine(p.id, size, UI.ch, p.tops.slice(), p.promo);
   if(p.promo==='scpwd') l.sc = {type:p.sc.type, name:p.sc.name.trim(), id:p.sc.id.trim()};
-  addLine(l);
+  if(p.edit!=null && UI.cart[p.edit]){
+    const old = UI.cart[p.edit];
+    l.qty = oneCup(l) ? 1 : old.qty;              // a one-cup promo never covers more than one cup
+    UI.cart[p.edit] = l;
+    if(oneCup(l) && old.qty > 1){                 // the other cups stay in the order at the regular price
+      UI.cart.splice(p.edit + 1, 0, Object.assign(mkLine(p.id, size, UI.ch, p.tops.slice(), null), {qty: old.qty - 1}));
+      toast((l.sc ? 'Senior / PWD' : promoById[l.promo].n) + ' is for one cup. The other ' + (old.qty - 1) + ' stay at the regular price.');
+    } else toast('Drink changed');
+  } else addLine(l);
   closeOv(); renderTicket();
 }
 // free-drink promos (B1T1, Frequency, Complimentary…), Senior/PWD and every Scratch & Win prize (ids "sw-…": one card = one prize, JB 11.26.2026)
@@ -1188,6 +1204,7 @@ document.addEventListener('click', e=>{
       UI.ch = id; renderChannels(); renderGrid(); renderTicket(); break;
     case 'cat': UI.cat = id; renderChannels(); renderGrid(); break;
     case 'pick': openPick(id); break;
+    case 'editline': openEdit(+b.dataset.i); break;
     case 'ptop': { const t = UI.pick.tops, i = t.indexOf(id); if(i<0){ t.push(id); celebrate(b, false, '+' + peso(topById[id].p)) } else t.splice(i,1); renderPick(); break }
     case 'ppromo': UI.pick.promo = UI.pick.promo===id ? null : id; renderPick(); if(UI.pick.promo==='scpwd') $('scname').focus(); break;
     case 'sctype': UI.pick.sc.type = id; renderPick(); break;
