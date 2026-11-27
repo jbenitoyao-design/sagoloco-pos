@@ -160,6 +160,9 @@ details summary{cursor:pointer;color:var(--hi);font-size:14px;margin-top:8px}
 textarea.msg{width:100%;min-height:150px;font:inherit;font-size:14px;padding:10px;border-radius:10px;border:1px solid var(--line);background:var(--surface);color:var(--ink);resize:vertical}
 .btnrow{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px} .btnrow > *{flex:1 1 120px}
 .danger{color:var(--bad)}
+.stepper{display:inline-flex;gap:6px;align-items:center} .stepper .btn{min-width:44px;min-height:44px;font-weight:800;font-size:18px;padding:0}
+input.qty{font:inherit;font-size:16px;width:56px;min-height:44px;text-align:center;border:1px solid var(--line);border-radius:10px;background:var(--surface);color:var(--ink)}
+@media (min-width:900px){ .sup-sum{position:sticky;top:12px;align-self:start} }
 </style>
 </head>
 <body>
@@ -351,7 +354,7 @@ function crunch(sales){
 function renderShell(){
   const hq = V.role==='hq';
   // HQ: Sales · Menu & prices · Stores & people. Franchisee: Sales · Crew (their own stores only).
-  const tabs = hq ? [['sales','Sales'],['time','Attendance'],['menu','Menu & prices'],['stores','Stores & people']] : [['sales','Sales'],['time','Attendance'],['stores','Crew']];
+  const tabs = hq ? [['sales','Sales'],['time','Attendance'],['supplies','Supplies'],['menu','Menu & prices'],['stores','Stores & people']] : [['sales','Sales'],['time','Attendance'],['supplies','Supplies'],['stores','Crew']];
   if(!tabs.some(t=>t[0]===V.tab)) V.tab = 'sales';
   const title = (tabs.find(t=>t[0]===V.tab)||tabs[0])[1];
   $('app').innerHTML = `<header class="bar"><div class="brand"><p class="eyebrow">Sago Loco HQ</p><h1>${esc(title)}</h1></div>
@@ -360,7 +363,7 @@ function renderShell(){
     <div id="view"></div>`;
   $('out').onclick = async () => { clearInterval(timer); await sb.auth.signOut(); renderSignin() };
   document.querySelectorAll('[data-tab]').forEach(b => b.onclick = () => { if(V.tab===b.dataset.tab && V.tab==='stores'){ P.sel = null } V.tab = b.dataset.tab; renderShell() });
-  if(V.tab==='menu') showMenu(); else if(V.tab==='stores') showStores(); else if(V.tab==='time') showTime(); else showSales();
+  if(V.tab==='menu') showMenu(); else if(V.tab==='supplies') showSupplies(); else if(V.tab==='stores') showStores(); else if(V.tab==='time') showTime(); else showSales();
 }
 function showSales(){
   const opts = V.stores.length > 1 ? `<option value="all">All stores</option>` : '';
@@ -1249,6 +1252,237 @@ async function crewUpdate(c, data){
   const r = await sb.from('crew').update(data).eq('id', c.id).select('id,store_id,name,active');
   if(r.error || !r.data || !r.data.length) throw new Error(r.error && /fetch|network/i.test(r.error.message||'') ? NET : 'Couldn’t save. You can only change crew at your own stores.');
   Object.assign(c, r.data[0]);
+}
+
+// ---------- supplies (R-02): franchisees order from HQ's price list; HQ confirms payment → ready → picked up ----------
+// Three ways to pay (JB 11.27.2026): proof uploaded here, proof sent by Viber, or cash at the office. HQ always confirms the money.
+// The database does every check (who may order for which store, prices copied at order time, who may move an order).
+const SUP = {items:[], orders:[], cart:{}, store:null, view:'order', filter:'open', msg:'', loaded:false};
+const SUP_STATUS = {placed:'Waiting for payment', paid:'Paid · being prepared', ready:'Ready for pickup', picked_up:'Picked up', cancelled:'Cancelled'};
+const SUP_TAG = {placed:'warn', paid:'', ready:'good', picked_up:'', cancelled:''};
+const PAY_WAY = {app:'Will upload proof here', viber:'Will send proof by Viber', cash:'Will pay cash at the office'};
+const PAID_HOW = {gcash:'GCash', bank:'Bank transfer', cash:'Cash at the office'};
+const SUP_RULE = 'Payment confirmed by 12 noon, Monday to Friday → ready for pickup the next business day (MEMO-006).';
+const supTotal = lines => lines.reduce((a,l)=>{ if(l.price==null) a.tbd++; else a.sum += l.price*l.qty; return a }, {sum:0, tbd:0});
+const supMoney = (sum, tbd) => peso(sum) + (tbd ? ` + ${tbd} item${tbd===1?'':'s'} price to follow` : '');
+const ordNo = o => '#' + o.order_no;
+
+async function loadSupplies(){
+  const [it, od] = await Promise.all([
+    sb.from('supply_items').select('id,category,name,pack,price,active,sort').order('sort'),
+    sb.from('supply_orders').select('*,supply_order_lines(item_id,name,pack,price,qty)').order('created_at',{ascending:false}).limit(300)
+  ]);
+  if(it.error || od.error) throw new Error(NET);
+  SUP.items = it.data; SUP.orders = od.data; SUP.loaded = true;
+}
+// how many orders need HQ (to confirm payment or prepare) — shown on the tab
+const supWaiting = () => SUP.orders.filter(o => o.status==='placed' || o.status==='paid').length;
+
+async function showSupplies(){
+  if(!SUP.store) SUP.store = (V.stores[0]||{}).id || null;
+  if(V.role!=='hq' && SUP.view==='prices') SUP.view = 'order';
+  $('view').innerHTML = '<p class="empty">Loading supplies…</p>';
+  try{ await loadSupplies() }catch(e){ $('view').innerHTML = `<div class="callout">${esc(e.message)}</div>`; return }
+  drawSupplies();
+}
+function drawSupplies(){
+  const hq = V.role==='hq';
+  const views = hq ? [['orders','Orders' + (supWaiting() ? ` (${supWaiting()})` : '')],['order','Order for a store'],['prices','Price list']] : [['order','Order supplies'],['orders','My orders']];
+  if(!views.some(v=>v[0]===SUP.view)) SUP.view = hq ? 'orders' : 'order';
+  $('view').innerHTML = `<div class="filters"><div class="seg" role="group" aria-label="Supplies">${views.map(([k,l])=>`<button data-sv="${k}" aria-pressed="${SUP.view===k}">${esc(l)}</button>`).join('')}</div>
+    <button class="btn" id="sup_ref">Refresh</button></div>
+    ${SUP.msg ? `<div class="card" style="border-color:var(--good)">${SUP.msg}</div>` : ''}<div id="supbody"></div>`;
+  document.querySelectorAll('[data-sv]').forEach(b => b.onclick = () => { SUP.view = b.dataset.sv; SUP.msg = ''; drawSupplies() });
+  $('sup_ref').onclick = () => { SUP.msg = ''; showSupplies() };
+  if(SUP.view==='order') drawSupOrder(); else if(SUP.view==='prices') drawSupPrices(); else drawSupOrders();
+}
+
+// ---- order form: the price list by category, − qty + on each item ----
+function drawSupOrder(){
+  const el = $('supbody'), active = SUP.items.filter(i=>i.active);
+  if(!V.stores.length){ el.innerHTML = '<p class="empty">No store is linked to this login yet. Message HQ.</p>'; return }
+  const cats = [...new Set(active.map(i=>i.category))];
+  const lines = active.filter(i=>SUP.cart[i.id]).map(i=>({...i, qty:SUP.cart[i.id]})), t = supTotal(lines);
+  const n = lines.reduce((a,l)=>a+l.qty,0);
+  el.innerHTML = `<div class="grid"><div class="card span8">
+      ${V.stores.length > 1 ? `<div class="field"><label for="sup_store">Order for</label><select id="sup_store">${V.stores.map(s=>`<option value="${s.id}" ${s.id===SUP.store?'selected':''}>${esc(s.name)}</option>`).join('')}</select></div>` : `<p class="muted">Ordering for <b>${esc(V.stores[0].name)}</b></p>`}
+      ${cats.map(c=>`<h2 style="margin-top:14px">${esc(c)}</h2><table><tbody>${active.filter(i=>i.category===c).map(i=>`<tr>
+        <td><b>${esc(i.name)}</b>${i.pack?`<div class="muted">${esc(i.pack)}</div>`:''}</td>
+        <td class="r num" style="white-space:nowrap">${i.price==null?'<span class="muted">Price to follow</span>':peso(i.price)}</td>
+        <td class="r" style="white-space:nowrap"><span class="stepper"><button class="btn" data-dec="${i.id}" aria-label="One less ${esc(i.name)}" ${SUP.cart[i.id]?'':'disabled'}>−</button><input class="qty" data-qty="${i.id}" inputmode="numeric" value="${SUP.cart[i.id]||''}" placeholder="0" aria-label="How many ${esc(i.name)}"><button class="btn" data-inc="${i.id}" aria-label="One more ${esc(i.name)}">+</button></span></td></tr>`).join('')}</tbody></table>`).join('')}
+    </div>
+    <div class="card span4 sup-sum"><h2>Your order</h2>
+      ${lines.length ? `<table><tbody>${lines.map(l=>`<tr><td>${l.qty}× ${esc(l.name)}</td><td class="r num">${l.price==null?'—':peso(l.price*l.qty)}</td></tr>`).join('')}</tbody></table>
+        <p style="font-size:18px;font-weight:800;margin:10px 0 2px">${supMoney(t.sum, t.tbd)}</p>
+        ${t.tbd ? '<p class="muted">HQ confirms the price of those items when it checks your payment.</p>' : ''}` : '<p class="empty">Tap + on the items you need.</p>'}
+      <h2 style="margin-top:14px">How will you pay?</h2>
+      <div class="btnrow" role="group" aria-label="How will you pay">${Object.entries({app:'Upload proof here',viber:'Send proof by Viber',cash:'Cash at the office'}).map(([k,l])=>`<button class="btn" data-pw="${k}" aria-pressed="${SUP.pay===k}">${l}</button>`).join('')}</div>
+      <div class="field" style="margin-top:12px"><label for="sup_note">Note for HQ (optional)</label><input id="sup_note" maxlength="500" value="${esc(SUP.note||'')}" placeholder="e.g. pickup Saturday"></div>
+      <p class="muted">${SUP_RULE}</p>
+      <button class="primary" id="sup_place" ${n && SUP.pay ? '' : 'disabled'}>${n ? (SUP.pay ? `Place order · ${n} item${n===1?'':'s'}` : 'Pick how you will pay') : 'Add items first'}</button>
+      ${n ? '<button class="linkbtn" id="sup_clear" style="margin-top:8px">Clear order</button>' : ''}
+      <div id="sup_err"></div></div></div>`;
+  if($('sup_store')) $('sup_store').onchange = e => { SUP.store = e.target.value };
+  const set = (id, q) => { q = Math.max(0, Math.min(999, q|0)); if(q) SUP.cart[id] = q; else delete SUP.cart[id]; SUP.note = ($('sup_note')||{}).value; drawSupOrder() };
+  el.querySelectorAll('[data-inc]').forEach(b => b.onclick = () => set(b.dataset.inc, (SUP.cart[b.dataset.inc]||0) + 1));
+  el.querySelectorAll('[data-dec]').forEach(b => b.onclick = () => set(b.dataset.dec, (SUP.cart[b.dataset.dec]||0) - 1));
+  // typed quantity: redraw after the tap/blur that caused it has finished (redrawing during blur breaks the page)
+  el.querySelectorAll('[data-qty]').forEach(i => i.onchange = () => { const id = i.dataset.qty, q = parseInt(i.value.replace(/\D/g,''),10) || 0; setTimeout(() => set(id, q), 0) });
+  el.querySelectorAll('[data-pw]').forEach(b => b.onclick = () => { SUP.pay = b.dataset.pw; SUP.note = $('sup_note').value; drawSupOrder() });
+  if($('sup_clear')) $('sup_clear').onclick = () => { SUP.cart = {}; drawSupOrder() };
+  $('sup_place').onclick = async () => {
+    const b = $('sup_place'); b.disabled = true; b.textContent = 'Placing order…'; $('sup_err').innerHTML = '';
+    const store = SUP.store || V.stores[0].id;
+    const r = await sb.rpc('place_supply_order', {p_store:store, p_lines:lines.map(l=>({item:l.id, qty:l.qty})), p_pay:SUP.pay, p_note:$('sup_note').value});
+    if(r.error){ $('sup_err').innerHTML = `<div class="callout" style="margin-top:10px">${esc(/fetch|network/i.test(r.error.message||'') ? NET : r.error.message)}</div>`; b.disabled = false; b.textContent = 'Place order'; return }
+    const pay = SUP.pay; SUP.cart = {}; SUP.pay = null; SUP.note = '';
+    await loadSupplies().catch(()=>{});
+    const o = SUP.orders.find(x=>x.id===r.data);
+    SUP.msg = `<b>Order ${o?ordNo(o):''} placed.</b> ${pay==='app' ? 'Pay by GCash or bank, then open the order and tap <b>Upload proof of payment</b>.' : pay==='viber' ? 'Send your proof of payment in your store’s Viber group with the order number.' : 'Bring the cash to the office and mention the order number.'} HQ confirms the payment here.`;
+    SUP.view = 'orders'; drawSupplies();
+    if(o && pay==='app') openSupOrder(o.id);
+  };
+}
+
+// ---- orders list: open ones first; HQ sees every store ----
+function drawSupOrders(){
+  const el = $('supbody'), hq = V.role==='hq';
+  const open = o => !['picked_up','cancelled'].includes(o.status);
+  const list = SUP.orders.filter(o => SUP.filter==='open' ? open(o) : !open(o));
+  const groups = SUP.filter==='open' ? ['placed','paid','ready'] : ['picked_up','cancelled'];
+  el.innerHTML = `<div class="filters"><div class="seg" role="group" aria-label="Which orders">
+      <button data-sf="open" aria-pressed="${SUP.filter==='open'}">Open</button><button data-sf="done" aria-pressed="${SUP.filter==='done'}">Done &amp; cancelled</button></div></div>
+    ${list.length ? groups.map(g => { const os = list.filter(o=>o.status===g); return os.length ? `<div class="card"><h2>${SUP_STATUS[g]} · ${os.length}</h2>
+      <div class="tablewrap"><table><thead><tr><th>Order</th>${hq||V.stores.length>1?'<th>Store</th>':''}<th>Placed</th><th class="r">Amount</th><th>Payment</th><th></th></tr></thead><tbody>
+      ${os.map(o => { const t = supTotal(o.supply_order_lines||[]); return `<tr>
+        <td><b>${ordNo(o)}</b></td>${hq||V.stores.length>1?`<td>${esc(storeName(o.store_id))}</td>`:''}
+        <td>${fmtD(dateOf(o.created_at))} ${timePH(o.created_at)}</td>
+        <td class="r num">${o.paid_amount!=null ? peso(o.paid_amount) : supMoney(t.sum, t.tbd)}</td>
+        <td>${o.status==='placed' ? (o.proof_path ? '<span class="tag good">Proof uploaded</span>' : `<span class="muted">${esc(PAY_WAY[o.pay_way])}</span>`) : o.paid_how ? esc(PAID_HOW[o.paid_how]||o.paid_how) : '—'}</td>
+        <td class="r"><button class="btn" data-open="${o.id}">${hq && o.status!=='picked_up' && o.status!=='cancelled' ? 'Open' : 'View'}</button></td></tr>` }).join('')}
+      </tbody></table></div></div>` : '' }).join('') : `<p class="empty">${SUP.filter==='open' ? 'No open orders.' : 'Nothing here yet.'}</p>`}`;
+  el.querySelectorAll('[data-sf]').forEach(b => b.onclick = () => { SUP.filter = b.dataset.sf; drawSupOrders() });
+  el.querySelectorAll('[data-open]').forEach(b => b.onclick = () => openSupOrder(b.dataset.open));
+}
+
+// ---- one order: items, status, and the next step for whoever is looking ----
+function openSupOrder(id){
+  const o = SUP.orders.find(x=>x.id===id); if(!o) return;
+  const hq = V.role==='hq', lines = o.supply_order_lines||[], t = supTotal(lines);
+  const when = (label, at) => at ? `<li>${label} · ${fmtD(dateOf(at))} ${timePH(at)}</li>` : '';
+  let act = '';
+  if(o.status==='placed'){
+    act += o.proof_path ? `<button class="btn" id="o_proof">See proof of payment</button>` : '';
+    act += `<label class="btn" style="text-align:center;display:block;margin-top:8px">${o.proof_path?'Replace with another proof':'Upload proof of payment'}<input type="file" id="o_file" accept="image/*,application/pdf" hidden></label>`;
+    if(hq) act += `<h2 style="margin-top:16px">Payment received?</h2>
+      <div class="grid3" style="grid-template-columns:1fr 1fr"><div class="field"><label for="o_amt">Amount received</label><input id="o_amt" inputmode="decimal" value="${t.tbd ? '' : t.sum.toFixed(2)}"></div>
+      <div class="field"><label for="o_how">How it came in</label><select id="o_how">${Object.entries(PAID_HOW).map(([k,l])=>`<option value="${k}" ${(o.pay_way==='cash'?'cash':'gcash')===k?'selected':''}>${l}</option>`).join('')}</select></div></div>
+      ${t.tbd ? `<p class="muted">${t.tbd} item${t.tbd===1?' has':'s have'} no price yet: type the full amount you agreed with the franchisee.</p>` : ''}
+      <button class="primary" id="o_paid">Payment received</button>`;
+    act += `<button class="linkbtn danger" id="o_cancel" style="margin-top:10px">Cancel this order</button>`;
+  } else if(hq && o.status==='paid'){
+    act = `${o.proof_path?'<button class="btn" id="o_proof">See proof of payment</button>':''}<button class="primary" id="o_ready" style="margin-top:8px">Packed · ready for pickup</button><button class="linkbtn danger" id="o_cancel" style="margin-top:10px">Cancel this order</button>`;
+  } else if(hq && o.status==='ready'){
+    act = `<button class="primary" id="o_pick">Picked up</button><button class="linkbtn danger" id="o_cancel" style="margin-top:10px">Cancel this order</button>`;
+  } else if(o.proof_path){
+    act = '<button class="btn" id="o_proof">See proof of payment</button>';
+  }
+  if(!hq && o.status==='paid') act += '<p class="muted">HQ confirmed your payment and is preparing your order. To change or cancel it now, message HQ.</p>';
+  openSheet(`Order ${ordNo(o)} · ${storeName(o.store_id)}`, `<p><span class="tag ${SUP_TAG[o.status]}" style="margin-left:0">${SUP_STATUS[o.status]}</span></p>
+    <table><tbody>${lines.map(l=>`<tr><td>${l.qty}× <b>${esc(l.name)}</b>${l.pack?` <span class="muted">${esc(l.pack)}</span>`:''}</td><td class="r num">${l.price==null?'<span class="muted">to follow</span>':peso(l.price*l.qty)}</td></tr>`).join('')}
+      <tr><td><b>Total</b></td><td class="r num"><b>${supMoney(t.sum, t.tbd)}</b></td></tr>
+      ${o.paid_amount!=null?`<tr><td>Paid${o.paid_how?' · '+esc(PAID_HOW[o.paid_how]||o.paid_how):''}</td><td class="r num">${peso(o.paid_amount)}</td></tr>`:''}</tbody></table>
+    <ul class="steps" style="margin-top:12px">${when('Placed · ' + esc(PAY_WAY[o.pay_way]), o.created_at)}${when('Proof uploaded', o.proof_at)}${when('Payment received', o.paid_at)}${when('Ready for pickup', o.ready_at)}${when('Picked up', o.picked_up_at)}${when('Cancelled · ' + esc(o.cancel_reason||''), o.cancelled_at)}</ul>
+    ${o.note ? `<p class="muted">Note: ${esc(o.note)}</p>` : ''}
+    ${o.status==='placed' && !hq ? `<p class="muted">${o.pay_way==='viber' ? 'Send your proof in your store’s Viber group with order '+ordNo(o)+', or upload it here.' : o.pay_way==='cash' ? 'Bring the cash to the office and mention order '+ordNo(o)+'.' : 'Pay by GCash or bank, then upload the screenshot or receipt here.'} ${SUP_RULE}</p>` : ''}
+    ${act}`);
+  const after = async msg => { await loadSupplies().catch(()=>{}); SUP.msg = msg; closeEditor(); drawSupplies() };
+  if($('o_proof')) busy($('o_proof'), 'Opening…', async () => {
+    const r = await sb.storage.from('supply-proofs').createSignedUrl(o.proof_path, 300);
+    if(r.error) throw new Error(NET); window.open(r.data.signedUrl, '_blank', 'noopener');
+  });
+  if($('o_file')) $('o_file').onchange = async e => {
+    const f = e.target.files[0]; if(!f) return; sheetErr('');
+    const lab = e.target.parentElement; lab.firstChild.textContent = 'Uploading…';
+    try{
+      const blob = await shrinkProof(f), ext = blob.type==='application/pdf' ? 'pdf' : blob.type==='image/png' ? 'png' : blob.type==='image/webp' ? 'webp' : 'jpg';
+      if(blob.size > 5*1024*1024) throw new Error('That file is over 5 MB. Send a screenshot instead.');
+      const path = `${o.store_id}/${o.id}/${Date.now()}.${ext}`;
+      const up = await sb.storage.from('supply-proofs').upload(path, blob, {contentType: blob.type || 'image/jpeg', upsert:false});
+      if(up.error) throw new Error(/mime|type/i.test(up.error.message||'') ? 'Use a photo, screenshot or PDF.' : NET);
+      const r = await sb.rpc('supply_order_proof', {p_order:o.id, p_path:path});
+      if(r.error) throw new Error(r.error.message);
+      await after(`<b>Proof uploaded for order ${ordNo(o)}.</b> HQ will confirm the payment here.`);
+    }catch(err){ sheetErr(err.message || NET); lab.firstChild.textContent = 'Upload proof of payment' }
+  };
+  if($('o_paid')) busy($('o_paid'), 'Saving…', async () => {
+    const amt = Number(String($('o_amt').value).replace(/[₱,\s]/g,''));
+    if(!isFinite(amt) || amt <= 0) throw new Error('Type the amount received.');
+    if(!t.tbd && Math.abs(amt - t.sum) > 0.009 && !confirm(`The order total is ${peso(t.sum)} but you typed ${peso(amt)}. Save ${peso(amt)} as received?`)) throw new Error('Not saved. Check the amount received.');
+    const r = await sb.rpc('supply_order_step', {p_order:o.id, p_to:'paid', p_amount:amt, p_how:$('o_how').value});
+    if(r.error) throw new Error(r.error.message);
+    await after(`Order ${ordNo(o)}: payment of ${peso(amt)} recorded. Next: pack it, then tap <b>Packed · ready for pickup</b>.`);
+  });
+  if($('o_ready')) busy($('o_ready'), 'Saving…', async () => {
+    const r = await sb.rpc('supply_order_step', {p_order:o.id, p_to:'ready'}); if(r.error) throw new Error(r.error.message);
+    await after(`Order ${ordNo(o)} is ready for pickup. Tell ${esc(storeName(o.store_id))}.`);
+  });
+  if($('o_pick')) busy($('o_pick'), 'Saving…', async () => {
+    const r = await sb.rpc('supply_order_step', {p_order:o.id, p_to:'picked_up'}); if(r.error) throw new Error(r.error.message);
+    await after(`Order ${ordNo(o)} picked up. Done.`);
+  });
+  if($('o_cancel')) $('o_cancel').onclick = () => {
+    openSheet(`Cancel order ${ordNo(o)}?`, `<div class="field"><label for="c_why">Reason</label><input id="c_why" maxlength="300" placeholder="${hq?'e.g. franchisee asked, out of stock':'e.g. ordered twice'}"></div>
+      ${o.status!=='placed' ? '<p class="callout">HQ already received payment for this order. Arrange the refund or credit with the franchisee.</p>' : ''}
+      <div class="btnrow"><button class="btn" id="c_no">Keep the order</button><button class="primary" id="c_yes" style="background:var(--bad);color:#fff">Cancel order</button></div>`);
+    $('c_no').onclick = () => openSupOrder(o.id);
+    busy($('c_yes'), 'Cancelling…', async () => {
+      const why = $('c_why').value.trim(); if(!why) throw new Error('Give a reason for cancelling.');
+      const r = await sb.rpc('supply_order_cancel', {p_order:o.id, p_reason:why}); if(r.error) throw new Error(r.error.message);
+      await after(`Order ${ordNo(o)} cancelled.`);
+    });
+  };
+}
+// phone photos can be 5–10 MB: images are resized to 1600 px JPEG before upload; PDFs go as they are
+function shrinkProof(f){
+  if(!/^image\//.test(f.type) || f.size < 700*1024) return Promise.resolve(f);
+  return new Promise(res => {
+    const img = new Image(), url = URL.createObjectURL(f);
+    img.onload = () => { const k = Math.min(1, 1600/Math.max(img.width, img.height)), c = document.createElement('canvas');
+      c.width = Math.round(img.width*k); c.height = Math.round(img.height*k); c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+      URL.revokeObjectURL(url); c.toBlob(b => res(b || f), 'image/jpeg', 0.82) };
+    img.onerror = () => { URL.revokeObjectURL(url); res(f) };
+    img.src = url;
+  });
+}
+
+// ---- HQ: price list. Blank price = "price to follow". Hidden items leave the order form; old orders keep theirs. ----
+function drawSupPrices(){
+  const el = $('supbody'), cats = [...new Set(SUP.items.map(i=>i.category))];
+  el.innerHTML = `<div class="card"><p class="muted">New Franchisee Supply Price List. Change a price and tap <b>Save prices</b>. Leave a price blank for “price to follow”. Orders already placed keep the price they were placed at.</p>
+    ${cats.map(c=>`<h2 style="margin-top:14px">${esc(c)}</h2><div class="tablewrap"><table><thead><tr><th>Item</th><th>Pack</th><th class="r">Price</th><th>On the order form</th></tr></thead><tbody>
+      ${SUP.items.filter(i=>i.category===c).map(i=>`<tr class="${i.active?'':'off'}"><td><b>${esc(i.name)}</b></td><td>${esc(i.pack||'')}</td>
+        <td class="r"><input class="qty" style="width:110px" data-price="${i.id}" inputmode="decimal" value="${i.price==null?'':Number(i.price).toFixed(2)}" placeholder="to follow" aria-label="Price of ${esc(i.name)}"></td>
+        <td><label><input type="checkbox" data-act-item="${i.id}" ${i.active?'checked':''}> Shown</label></td></tr>`).join('')}
+    </tbody></table></div>`).join('')}
+    <button class="primary" id="p_save" style="margin-top:14px">Save prices</button><div id="p_err"></div></div>`;
+  $('p_save').onclick = async () => {
+    const b = $('p_save'), changes = [];
+    for(const i of SUP.items){
+      const raw = el.querySelector(`[data-price="${i.id}"]`).value.replace(/[₱,\s]/g,''), price = raw==='' ? null : Number(raw);
+      if(price!==null && (!isFinite(price) || price < 0)){ $('p_err').innerHTML = `<div class="callout" style="margin-top:10px">Check the price of ${esc(i.name)}.</div>`; return }
+      const active = el.querySelector(`[data-act-item="${i.id}"]`).checked;
+      const p2 = price===null ? null : Math.round(price*100)/100;
+      if(p2 !== (i.price==null ? null : Number(i.price)) || active !== i.active) changes.push({id:i.id, price:p2, active});
+    }
+    if(!changes.length){ $('p_err').innerHTML = '<p class="muted">No changes to save.</p>'; return }
+    b.disabled = true; b.textContent = `Saving ${changes.length}…`;
+    for(const c of changes){
+      const r = await sb.from('supply_items').update({price:c.price, active:c.active}).eq('id', c.id).select('id');
+      if(r.error || !r.data.length){ $('p_err').innerHTML = `<div class="callout" style="margin-top:10px">Couldn’t save. ${r.error && /fetch|network/i.test(r.error.message||'') ? NET : 'Only HQ can change supply prices.'}</div>`; b.disabled = false; b.textContent = 'Save prices'; return }
+    }
+    await loadSupplies().catch(()=>{}); SUP.msg = `Saved ${changes.length} change${changes.length===1?'':'s'} to the price list.`; drawSupplies();
+  };
 }
 
 // ---- sheets: forms, confirmations, results (reuse the menu editor's sheet) ----
