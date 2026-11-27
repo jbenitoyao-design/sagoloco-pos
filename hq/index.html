@@ -102,7 +102,9 @@ details summary{cursor:pointer;color:var(--hi);font-size:14px;margin-top:8px}
 .empty{color:var(--muted);text-align:center;padding:24px 0}
 .skel{opacity:.5}
 .tabs{display:flex;gap:4px;background:var(--surface-2);border-radius:12px;padding:4px;margin:4px 0 8px}
-.tabs button{flex:1;border:0;background:none;color:var(--muted);font:inherit;font-weight:600;padding:9px;border-radius:9px;cursor:pointer}
+.tabs{overflow-x:auto;scrollbar-width:none} .tabs::-webkit-scrollbar{display:none}
+.tabs .sm{display:none} @media (max-width:560px){ .tabs .lg{display:none} .tabs .sm{display:inline} .tabs button{padding:9px 6px} }
+.tabs button{flex:1 0 auto;white-space:nowrap;border:0;background:none;color:var(--muted);font:inherit;font-weight:600;padding:9px;border-radius:9px;cursor:pointer}
 .tabs button[aria-selected="true"]{background:var(--surface);color:var(--ink);box-shadow:0 1px 3px rgba(0,0,0,.12)}
 .sec{display:flex;justify-content:space-between;align-items:center;margin:16px 0 8px}
 .sec h2{font-size:16px;margin:0}
@@ -225,7 +227,7 @@ async function start(){
     sb.from('promos').select('id,name')
   ]);
   if(prof.error && /JWT|token|expired/i.test(prof.error.message||'')){ await sb.auth.signOut(); renderSignin(); return }
-  if(prof.error || !prof.data || !['hq','franchisee'].includes(prof.data.role)){
+  if(prof.error || !prof.data || !['hq','franchisee','admin'].includes(prof.data.role)){
     await sb.auth.signOut(); renderSignin('This login is for a store tablet, not HQ. Use your own HQ or franchisee login.'); return;
   }
   V.role = prof.data.role;
@@ -234,7 +236,7 @@ async function start(){
   V.stores = st.data; menu.data.forEach(m => V.menu[m.id] = m.name);
   renderShell();
   clearInterval(timer); timer = setInterval(()=>{ if(V.tab==='sales' && V.R && V.R.live && !document.hidden) load(true) }, 60000);
-  cleanOldSelfies();
+  if(V.role!=='admin') cleanOldSelfies();
 }
 // 90-day rule, no exceptions: a backup to each store tablet's own daily clean-up, so photos still
 // leave even if a store stops opening its POS. The database refuses to delete anything newer.
@@ -354,11 +356,13 @@ function crunch(sales){
 function renderShell(){
   const hq = V.role==='hq';
   // HQ: Sales · Menu & prices · Stores & people. Franchisee: Sales · Crew (their own stores only).
-  const tabs = hq ? [['sales','Sales'],['time','Attendance'],['supplies','Supplies'],['menu','Menu & prices'],['stores','Stores & people']] : [['sales','Sales'],['time','Attendance'],['supplies','Supplies'],['stores','Crew']];
-  if(!tabs.some(t=>t[0]===V.tab)) V.tab = 'sales';
+  // Franchise Admin (11.27.2026): supply orders only
+  const tabs = hq ? [['sales','Sales'],['time','Attendance'],['supplies','Supplies'],['menu','Menu & prices'],['stores','Stores & people']]
+    : V.role==='admin' ? [['supplies','Supplies']] : [['sales','Sales'],['time','Attendance'],['supplies','Supplies'],['stores','Crew']];
+  if(!tabs.some(t=>t[0]===V.tab)) V.tab = tabs[0][0];
   const title = (tabs.find(t=>t[0]===V.tab)||tabs[0])[1];
   $('app').innerHTML = `<header class="bar"><div class="brand"><p class="eyebrow">Sago Loco HQ</p><h1>${esc(title)}</h1></div>
-      <div class="tabs" role="tablist">${tabs.map(([k,l])=>`<button role="tab" data-tab="${k}" aria-selected="${V.tab===k}">${esc(l)}</button>`).join('')}</div>
+      <div class="tabs" role="tablist">${tabs.map(([k,l])=>{ const sh = {'Menu & prices':'Menu','Stores & people':'Stores','Attendance':'Time'}[l]; return `<button role="tab" data-tab="${k}" aria-selected="${V.tab===k}" aria-label="${esc(l)}">${sh ? `<span class="lg">${esc(l)}</span><span class="sm">${esc(sh)}</span>` : esc(l)}</button>` }).join('')}</div>
       <button class="btn" id="out">Sign out</button></header>
     <div id="view"></div>`;
   $('out').onclick = async () => { clearInterval(timer); await sb.auth.signOut(); renderSignin() };
@@ -1159,8 +1163,10 @@ function renderStoreList(el){
     <p class="muted">${hq ? 'Each store needs three things: a franchisee login (if franchised), a tablet login for the counter, and its crew. Nothing here is ever deleted; people and stores are turned off instead.'
       : 'Tap a store to add crew, reset a forgotten PIN, or turn off someone who left.'}</p>
     <div class="sec"><h2>Stores</h2>${hq?'<button class="btn" id="addStore">+ Add store</button>':''}</div>
-    <div class="list">${P.stores.map(row).join('') || '<p class="empty">No stores yet.</p>'}</div>`;
+    <div class="list">${P.stores.map(row).join('') || '<p class="empty">No stores yet.</p>'}</div>
+    ${hq ? staffSection() : ''}`;
   if(!wide) P.msg = '';
+  if(hq) bindStaff();
   document.querySelectorAll('[data-store]').forEach(b => b.onclick = () => { P.sel = b.dataset.store; P.msg = ''; drawStores(); if(!wide) window.scrollTo(0,0) });
   if($('addStore')) $('addStore').onclick = () => storeForm(null);
 }
@@ -1257,7 +1263,7 @@ async function crewUpdate(c, data){
 // ---------- supplies (R-02): franchisees order from HQ's price list; HQ confirms payment → ready → picked up ----------
 // Three ways to pay (JB 11.27.2026): proof uploaded here, proof sent by Viber, or cash at the office. HQ always confirms the money.
 // The database does every check (who may order for which store, prices copied at order time, who may move an order).
-const SUP = {items:[], orders:[], cart:{}, store:null, view:'order', filter:'open', msg:'', loaded:false};
+const SUP = {items:[], orders:[], cart:{}, store:null, view:null, filter:'open', msg:'', loaded:false};
 const SUP_STATUS = {placed:'Waiting for payment', paid:'Paid · being prepared', ready:'Ready for pickup', picked_up:'Picked up', cancelled:'Cancelled'};
 const SUP_TAG = {placed:'warn', paid:'', ready:'good', picked_up:'', cancelled:''};
 const PAY_WAY = {app:'Will upload proof here', viber:'Will send proof by Viber', cash:'Will pay cash at the office'};
@@ -1280,15 +1286,16 @@ const supWaiting = () => SUP.orders.filter(o => o.status==='placed' || o.status=
 
 async function showSupplies(){
   if(!SUP.store) SUP.store = (V.stores[0]||{}).id || null;
-  if(V.role!=='hq' && SUP.view==='prices') SUP.view = 'order';
+  if(V.role!=='hq' && SUP.view==='prices') SUP.view = supStaff() ? 'orders' : 'order';
   $('view').innerHTML = '<p class="empty">Loading supplies…</p>';
   try{ await loadSupplies() }catch(e){ $('view').innerHTML = `<div class="callout">${esc(e.message)}</div>`; return }
   drawSupplies();
 }
+const supStaff = () => V.role==='hq' || V.role==='admin';
 function drawSupplies(){
-  const hq = V.role==='hq';
-  const views = hq ? [['orders','Orders' + (supWaiting() ? ` (${supWaiting()})` : '')],['order','Order for a store'],['prices','Price list']] : [['order','Order supplies'],['orders','My orders']];
-  if(!views.some(v=>v[0]===SUP.view)) SUP.view = hq ? 'orders' : 'order';
+  const staff = supStaff(), w = supWaiting();
+  const views = staff ? [['orders','Orders' + (w ? ` (${w})` : '')],['order','Order for a store']].concat(V.role==='hq' ? [['prices','Price list']] : []) : [['order','Order supplies'],['orders','My orders']];
+  if(!views.some(v=>v[0]===SUP.view)) SUP.view = staff ? 'orders' : 'order';
   $('view').innerHTML = `<div class="filters"><div class="seg" role="group" aria-label="Supplies">${views.map(([k,l])=>`<button data-sv="${k}" aria-pressed="${SUP.view===k}">${esc(l)}</button>`).join('')}</div>
     <button class="btn" id="sup_ref">Refresh</button></div>
     ${SUP.msg ? `<div class="card" style="border-color:var(--good)">${SUP.msg}</div>` : ''}<div id="supbody"></div>`;
@@ -1346,7 +1353,7 @@ function drawSupOrder(){
 
 // ---- orders list: open ones first; HQ sees every store ----
 function drawSupOrders(){
-  const el = $('supbody'), hq = V.role==='hq';
+  const el = $('supbody'), hq = supStaff();
   const open = o => !['picked_up','cancelled'].includes(o.status);
   const list = SUP.orders.filter(o => SUP.filter==='open' ? open(o) : !open(o));
   const groups = SUP.filter==='open' ? ['placed','paid','ready'] : ['picked_up','cancelled'];
@@ -1368,7 +1375,7 @@ function drawSupOrders(){
 // ---- one order: items, status, and the next step for whoever is looking ----
 function openSupOrder(id){
   const o = SUP.orders.find(x=>x.id===id); if(!o) return;
-  const hq = V.role==='hq', lines = o.supply_order_lines||[], t = supTotal(lines);
+  const hq = supStaff(), lines = o.supply_order_lines||[], t = supTotal(lines);
   const when = (label, at) => at ? `<li>${label} · ${fmtD(dateOf(at))} ${timePH(at)}</li>` : '';
   let act = '';
   if(o.status==='placed'){
@@ -1456,16 +1463,21 @@ function shrinkProof(f){
   });
 }
 
-// ---- HQ: price list. Blank price = "price to follow". Hidden items leave the order form; old orders keep theirs. ----
+// ---- HQ (JB, Geo): price list. Blank price = "price to follow". Change prices in the table and Save, or Edit an item
+// to rename it, change its pack or category, hide it, or remove it. Orders already placed keep their own copy of name and price.
 function drawSupPrices(){
   const el = $('supbody'), cats = [...new Set(SUP.items.map(i=>i.category))];
-  el.innerHTML = `<div class="card"><p class="muted">New Franchisee Supply Price List. Change a price and tap <b>Save prices</b>. Leave a price blank for “price to follow”. Orders already placed keep the price they were placed at.</p>
-    ${cats.map(c=>`<h2 style="margin-top:14px">${esc(c)}</h2><div class="tablewrap"><table><thead><tr><th>Item</th><th>Pack</th><th class="r">Price</th><th>On the order form</th></tr></thead><tbody>
-      ${SUP.items.filter(i=>i.category===c).map(i=>`<tr class="${i.active?'':'off'}"><td><b>${esc(i.name)}</b></td><td>${esc(i.pack||'')}</td>
+  el.innerHTML = `<div class="card"><div class="sec" style="margin-top:0"><p class="muted" style="margin:0">New Franchisee Supply Price List. Type new prices and tap <b>Save prices</b>, or tap <b>Edit</b> on an item. Blank price = “price to follow”. Orders already placed keep the price they were placed at.</p>
+      <button class="btn" id="p_add" style="white-space:nowrap;flex:none">+ Add item</button></div>
+    ${cats.map(c=>`<h2 style="margin-top:14px">${esc(c)}</h2><div class="tablewrap"><table><thead><tr><th>Item</th><th class="r">Price</th><th>On the order form</th><th></th></tr></thead><tbody>
+      ${SUP.items.filter(i=>i.category===c).map(i=>`<tr><td><b style="${i.active?'':'color:var(--muted)'}">${esc(i.name)}</b>${i.pack?`<div class="muted">${esc(i.pack)}</div>`:''}</td>
         <td class="r"><input class="qty" style="width:110px" data-price="${i.id}" inputmode="decimal" value="${i.price==null?'':Number(i.price).toFixed(2)}" placeholder="to follow" aria-label="Price of ${esc(i.name)}"></td>
-        <td><label><input type="checkbox" data-act-item="${i.id}" ${i.active?'checked':''}> Shown</label></td></tr>`).join('')}
+        <td><label><input type="checkbox" data-act-item="${i.id}" ${i.active?'checked':''}> Shown</label></td>
+        <td class="r"><button class="btn" data-edit-item="${i.id}">Edit</button></td></tr>`).join('')}
     </tbody></table></div>`).join('')}
     <button class="primary" id="p_save" style="margin-top:14px">Save prices</button><div id="p_err"></div></div>`;
+  $('p_add').onclick = () => supItemForm(null);
+  el.querySelectorAll('[data-edit-item]').forEach(b => b.onclick = () => supItemForm(SUP.items.find(i=>i.id===b.dataset.editItem)));
   $('p_save').onclick = async () => {
     const b = $('p_save'), changes = [];
     for(const i of SUP.items){
@@ -1483,6 +1495,48 @@ function drawSupPrices(){
     }
     await loadSupplies().catch(()=>{}); SUP.msg = `Saved ${changes.length} change${changes.length===1?'':'s'} to the price list.`; drawSupplies();
   };
+}
+// add or edit one price-list item
+function supItemForm(it){
+  const cats = [...new Set(SUP.items.map(i=>i.category))];
+  openSheet(it ? 'Edit item' : 'Add item', `
+    <div class="field"><label for="i_name">Item name</label><input id="i_name" maxlength="80" value="${esc(it?it.name:'')}" placeholder="e.g. Matcha Powder"></div>
+    <div class="grid3" style="grid-template-columns:1fr 1fr"><div class="field"><label for="i_pack">Pack size</label><input id="i_pack" maxlength="40" value="${esc(it&&it.pack||'')}" placeholder="e.g. 1kg, 100pcs"></div>
+      <div class="field"><label for="i_price">Price (₱)</label><input id="i_price" inputmode="decimal" value="${it&&it.price!=null?Number(it.price).toFixed(2):''}" placeholder="blank = to follow"></div></div>
+    <div class="field"><label for="i_cat">Category</label><select id="i_cat">${cats.map(c=>`<option ${it&&it.category===c?'selected':''}>${esc(c)}</option>`).join('')}<option value="__new">+ New category…</option></select></div>
+    <div class="field" id="i_newcat_f" hidden><label for="i_newcat">New category name</label><input id="i_newcat" maxlength="40"></div>
+    <label style="display:block;margin-bottom:12px"><input type="checkbox" id="i_active" ${!it||it.active?'checked':''}> Shown on the order form</label>
+    <button class="primary" id="i_save">${it ? 'Save changes' : 'Add to price list'}</button>
+    ${it ? '<button class="linkbtn danger" id="i_del" style="margin-top:12px">Remove this item</button>' : ''}`);
+  $('i_cat').onchange = e => { $('i_newcat_f').hidden = e.target.value !== '__new' };
+  busy($('i_save'), 'Saving…', async () => {
+    const name = $('i_name').value.trim(), pack = $('i_pack').value.trim() || null, raw = $('i_price').value.replace(/[₱,\s]/g,'');
+    const cat = $('i_cat').value==='__new' ? $('i_newcat').value.trim() : $('i_cat').value;
+    const price = raw==='' ? null : Number(raw);
+    if(!name) throw new Error('Type the item name.');
+    if(!cat) throw new Error('Type the new category name.');
+    if(price!==null && (!isFinite(price) || price < 0)) throw new Error('Check the price.');
+    if(SUP.items.some(x => x.id !== (it&&it.id) && x.name.toLowerCase()===name.toLowerCase() && (x.pack||'')===(pack||''))) throw new Error('That item is already on the price list.');
+    const row = {name, pack, category:cat, price: price===null ? null : Math.round(price*100)/100, active:$('i_active').checked};
+    let r;
+    if(it) r = await sb.from('supply_items').update(row).eq('id', it.id).select('id');
+    else {
+      const inCat = SUP.items.filter(x=>x.category===cat), sort = inCat.length ? Math.max(...inCat.map(x=>x.sort)) + 5 : Math.max(0, ...SUP.items.map(x=>x.sort)) + 100;
+      r = await sb.from('supply_items').insert(Object.assign(row, {id:newId(name, SUP.items), sort})).select('id');
+    }
+    if(r.error || !r.data.length) throw new Error(r.error && /fetch|network/i.test(r.error.message||'') ? NET : 'Couldn’t save. Only HQ can change the price list.');
+    await loadSupplies().catch(()=>{}); closeEditor(); SUP.msg = it ? `Saved ${esc(name)}.` : `Added ${esc(name)} to the price list.`; drawSupplies();
+  });
+  if($('i_del')) $('i_del').onclick = () => confirmSheet('Remove item', `Remove ${it.name} from the price list? If it was ever ordered, it is hidden from the order form instead, so past orders keep it.`, 'Remove', async () => {
+    const r = await sb.from('supply_items').delete().eq('id', it.id).select('id');
+    let msg = `Removed ${esc(it.name)}.`;
+    if(r.error && r.error.code === '23503'){   // in past orders: hide instead
+      const h = await sb.from('supply_items').update({active:false}).eq('id', it.id).select('id');
+      if(h.error || !h.data.length) throw new Error('Couldn’t remove it. Only HQ can change the price list.');
+      msg = `${esc(it.name)} is in past orders, so it was hidden from the order form instead.`;
+    } else if(r.error || !r.data.length) throw new Error(r.error && /fetch|network/i.test(r.error.message||'') ? NET : 'Couldn’t remove it. Only HQ can change the price list.');
+    await loadSupplies().catch(()=>{}); closeEditor(); SUP.msg = msg; drawSupplies();
+  }, true);
 }
 
 // ---- sheets: forms, confirmations, results (reuse the menu editor's sheet) ----
@@ -1569,21 +1623,47 @@ function crewForm(s){
   });
 }
 
+// ---- Franchise Admins (11.27.2026): Head Office staff who handle supply orders only (Supplies tab; no sales, prices or settings) ----
+function staffSection(){
+  const ad = P.people.filter(p=>p.role==='admin').sort((a,b)=>(a.off-b.off) || String(a.name).localeCompare(String(b.name)));
+  return `<div class="sec"><h2>Franchise Admins · supply orders</h2><button class="btn" id="addAdmin">+ Add</button></div>
+    <div class="card"><p class="muted" style="margin-top:0">They see only the Supplies tab: every store’s orders, confirm payments, mark ready and picked up. They can’t change prices or see sales.</p>
+    ${ad.map(a=>`<div class="person ${a.off?'offp':''}"><div><b>${esc(a.name||a.email)}</b><div class="muted">${esc(a.email)} · ${a.off ? 'Turned off' : a.signed_in_at ? 'Last sign-in ' + when(a.signed_in_at) : 'Hasn’t signed in yet'}</div></div>
+      <div class="acts">${a.off ? `<button class="btn" data-adon="${a.id}">Turn back on</button>` : `<button class="btn" data-adlink="${a.id}">${a.signed_in_at?'New setup link':'Send setup link'}</button><button class="btn danger" data-adoff="${a.id}">Turn off</button>`}</div></div>`).join('') || '<p class="empty" style="padding:8px 0">No Franchise Admin yet.</p>'}</div>`;
+}
+function bindStaff(){
+  const form = a => openSheet(a ? 'Turn back on' : 'Add a Franchise Admin', `
+    <div class="field"><label for="a_name">Name</label><input id="a_name" value="${esc(a?a.name||'':'')}" autocomplete="off"></div>
+    <div class="field"><label for="a_email">Email (their sign-in)</label><input id="a_email" type="email" value="${esc(a?a.email:'')}" ${a?'readonly':''} autocomplete="off"></div>
+    <p class="muted">You’ll get a one-time setup link to send them. They choose their own password.</p>
+    <button class="primary" id="a_go">${a ? 'Turn back on' : 'Add and make setup link'}</button>`) || busy($('a_go'), 'Working…', async () => {
+      const r = await hqCall('add_admin', {name:$('a_name').value, email:$('a_email').value});
+      await refreshPeople(); if(r.link) linkResult(r.name, r.email, r.link, 'admin'); else { closeEditor(); P.msg = `${r.name} can sign in again with ${r.email}.`; drawStores() } });
+  if($('addAdmin')) $('addAdmin').onclick = () => form(null);
+  document.querySelectorAll('[data-adon]').forEach(b => b.onclick = () => form(P.people.find(p=>p.id===b.dataset.adon)));
+  document.querySelectorAll('[data-adlink]').forEach(b => b.onclick = () => runSheet('Making a setup link…', async () => {
+    const a = P.people.find(p=>p.id===b.dataset.adlink), r = await hqCall('setup_link', {user_id:a.id}); linkResult(a.name||a.email, a.email, r.link, 'admin') }));
+  document.querySelectorAll('[data-adoff]').forEach(b => b.onclick = () => { const a = P.people.find(p=>p.id===b.dataset.adoff);
+    confirmSheet('Turn off login', `${a.name||a.email} won’t be able to sign in. Orders they handled stay as they are. You can turn it back on later.`, 'Turn off',
+      async () => { await hqCall('admin_off', {user_id:a.id}); await refreshPeople(); closeEditor(); P.msg = `${a.name||a.email}’s login is turned off.`; drawStores() }, true) });
+}
+
 // ---- results: shown once, then gone ----
 function copyBtn(id, text){ const b = $(id); if(!b) return;
   b.onclick = async () => { try{ await navigator.clipboard.writeText(text); b.textContent = 'Copied ✓' }catch(_){ b.textContent = 'Select and copy it' } setTimeout(()=>{ if(document.body.contains(b)) b.textContent = 'Copy' }, 2000) } }
 // the franchisee how-to guide (PRODUCTS/Training_Deployed); replace this file to update it
 const GUIDE_URL = 'https://pos.sagoloco.com/hq/franchisee-guide.pdf';
-function linkResult(name, email, link){
-  const first = String(name).split(/\s+/)[0];
-  const msg = `Hi ${first}! Here is your Sago Loco HQ login, where you can see your store's sales and manage your crew.\n\n1. Open this link and choose your password:\n${link}\n\n2. After that, sign in anytime at pos.sagoloco.com/hq with ${email}\n\nThe link works once and expires in 24 hours. If it expires, message HQ for a new one.\n\nHow-to guide (PDF): ${GUIDE_URL}`;
+function linkResult(name, email, link, kind){
+  const first = String(name).split(/\s+/)[0], adm = kind==='admin';
+  const msg = adm ? `Hi ${first}! Here is your Sago Loco HQ login for supply orders. You'll see every store's orders, confirm payments, and mark orders ready and picked up.\n\n1. Open this link and choose your password:\n${link}\n\n2. After that, sign in anytime at pos.sagoloco.com/hq with ${email}\n\nThe link works once and expires in 24 hours. If it expires, ask JB for a new one.`
+    : `Hi ${first}! Here is your Sago Loco HQ login, where you can see your store's sales and manage your crew.\n\n1. Open this link and choose your password:\n${link}\n\n2. After that, sign in anytime at pos.sagoloco.com/hq with ${email}\n\nThe link works once and expires in 24 hours. If it expires, message HQ for a new one.\n\nHow-to guide (PDF): ${GUIDE_URL}`;
   openSheet('Send the setup link', `<div class="okmsg">Login ready for ${esc(name)}. Send them this message by Viber, Messenger or email.</div>
     <textarea class="msg" id="r_msg" readonly>${esc(msg)}</textarea>
     <div class="btnrow"><button class="primary" id="r_copy">Copy message</button>${navigator.share?'<button class="btn" id="r_share">Share…</button>':''}
       <a class="btn" style="text-align:center;text-decoration:none" href="mailto:${encodeURIComponent(email)}?subject=${encodeURIComponent('Your Sago Loco HQ login')}&body=${encodeURIComponent(msg)}">Email it</a></div>
-    <div class="btnrow"><a class="btn" style="text-align:center;text-decoration:none" href="${GUIDE_URL}" download="Sago Loco POS Guide for Franchisees.pdf" id="r_guide">⬇ Download the franchisee guide</a></div>
-    <p class="muted">The guide’s web address is already in the message above. To send the file itself, download it and attach it in Viber or email.</p>
-    <p class="muted">Don’t open the link yourself: it works only once. If they didn’t get it, tap “New setup link” on the store page.</p>
+    ${adm ? '' : `<div class="btnrow"><a class="btn" style="text-align:center;text-decoration:none" href="${GUIDE_URL}" download="Sago Loco POS Guide for Franchisees.pdf" id="r_guide">⬇ Download the franchisee guide</a></div>
+    <p class="muted">The guide’s web address is already in the message above. To send the file itself, download it and attach it in Viber or email.</p>`}
+    <p class="muted">Don’t open the link yourself: it works only once. If they didn’t get it, tap “New setup link” ${adm ? 'next to their name' : 'on the store page'}.</p>
     <button class="btn" id="r_done" style="width:100%;margin-top:8px">Done</button>`);
   const b = $('r_copy'); b.onclick = async () => { try{ await navigator.clipboard.writeText(msg); b.textContent = 'Copied ✓' }catch(_){ $('r_msg').select(); b.textContent = 'Press Copy on the selected text' } };
   if($('r_share')) $('r_share').onclick = () => navigator.share({text: msg}).catch(()=>{});
